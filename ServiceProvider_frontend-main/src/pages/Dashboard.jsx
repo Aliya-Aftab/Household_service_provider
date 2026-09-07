@@ -26,7 +26,7 @@ export default function Dashboard() {
       try {
         // 1. Fetch live providers for "Recommended for You"
         const provRes = await API.get('/providers');
-        const formattedProviders = provRes.data.map(transformProvider);
+        const formattedProviders = (provRes.data || []).map(transformProvider);
         setRecommended(formattedProviders.filter((p) => p.recommended));
 
         // 2. Read active authenticated session from localStorage
@@ -68,7 +68,7 @@ export default function Dashboard() {
     try {
       await API.patch(`/bookings/${bookingId}/status`, { status: 'cancelled' });
       setUserBookings((prev) =>
-        prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b))
+        prev.map((b) => ((b.id || b._id) === bookingId ? { ...b, status: 'cancelled' } : b))
       );
     } catch (err) {
       console.error('Failed to cancel booking:', err);
@@ -109,7 +109,7 @@ export default function Dashboard() {
             ) : recommended.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {recommended.slice(0, 4).map((provider) => (
-                  <ServiceCard key={provider.id} provider={provider} />
+                  <ServiceCard key={provider.id || provider._id} provider={provider} />
                 ))}
               </div>
             ) : (
@@ -130,55 +130,59 @@ export default function Dashboard() {
               <p className="text-sm text-text-secondary">Loading your live bookings...</p>
             ) : userBookings.length > 0 ? (
               <div className="space-y-3">
-                {userBookings.map((booking) => (
-                  <div
-                    key={booking.id}
-                    className="bg-white rounded-xl card-shadow p-4 flex flex-col sm:flex-row sm:items-center gap-3 border border-border/50 hover:border-primary/20 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-text-primary truncate">{booking.providerName}</p>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[booking.status.toLowerCase()] || 'bg-gray-100 text-gray-600'}`}>
-                          {booking.status}
-                        </span>
+                {userBookings.map((booking) => {
+                  const bId = booking.id || booking._id;
+                  const bStatus = (booking.status || 'pending').toLowerCase();
+                  return (
+                    <div
+                      key={bId}
+                      className="bg-white rounded-xl card-shadow p-4 flex flex-col sm:flex-row sm:items-center gap-3 border border-border/50 hover:border-primary/20 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-text-primary truncate">{booking.providerName}</p>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[bStatus] || 'bg-gray-100 text-gray-600'}`}>
+                            {booking.status || 'Pending'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-text-secondary mt-0.5">{booking.service} • {booking.category}</p>
+                        <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted">
+                          <span className="flex items-center gap-1">
+                            <HiCalendar className="w-3.5 h-3.5" />
+                            {booking.date}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <HiClock className="w-3.5 h-3.5" />
+                            {booking.time}
+                          </span>
+                        </div>
                       </div>
-                      <p className="text-sm text-text-secondary mt-0.5">{booking.service} • {booking.category}</p>
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-text-muted">
-                        <span className="flex items-center gap-1">
-                          <HiCalendar className="w-3.5 h-3.5" />
-                          {booking.date}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <HiClock className="w-3.5 h-3.5" />
-                          {booking.time}
-                        </span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-sm font-bold text-primary">₹{booking.price}</span>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-sm font-bold text-primary">₹{booking.price}</span>
 
-                      {/* Cancel Action */}
-                      {(booking.status.toLowerCase() === 'pending' || booking.status.toLowerCase() === 'confirmed') && (
-                        <button
-                          type="button"
-                          onClick={() => handleCancelBooking(booking.id)}
-                          disabled={cancellingId === booking.id}
-                          className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-50"
+                        {/* Cancel Action */}
+                        {(bStatus === 'pending' || bStatus === 'confirmed') && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelBooking(bId)}
+                            disabled={cancellingId === bId}
+                            className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            {cancellingId === bId ? 'Cancelling...' : 'Cancel'}
+                          </button>
+                        )}
+
+                        <Link
+                          to={`/provider/${booking.providerId}`}
+                          className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
                         >
-                          {cancellingId === booking.id ? 'Cancelling...' : 'Cancel'}
-                        </button>
-                      )}
-
-                      <Link
-                        to={`/provider/${booking.providerId}`}
-                        className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
-                      >
-                        Details
-                      </Link>
+                          Details
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="bg-white rounded-xl card-shadow p-6 text-center border border-border/50">
@@ -237,9 +241,9 @@ export default function Dashboard() {
             <div className="space-y-3">
               {[
                 { label: 'Total Bookings', value: userBookings.length, color: 'text-primary' },
-                { label: 'Completed', value: userBookings.filter((b) => b.status.toLowerCase() === 'completed').length, color: 'text-emerald-600' },
-                { label: 'Pending', value: userBookings.filter((b) => b.status.toLowerCase() === 'pending').length, color: 'text-amber-600' },
-                { label: 'Confirmed', value: userBookings.filter((b) => b.status.toLowerCase() === 'confirmed').length, color: 'text-blue-600' },
+                { label: 'Completed', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'completed').length, color: 'text-emerald-600' },
+                { label: 'Pending', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'pending').length, color: 'text-amber-600' },
+                { label: 'Confirmed', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'confirmed').length, color: 'text-blue-600' },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-center justify-between">
                   <span className="text-sm text-text-secondary">{stat.label}</span>
