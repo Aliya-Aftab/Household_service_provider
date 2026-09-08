@@ -25,9 +25,17 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         // 1. Fetch live providers for "Recommended for You"
-        const provRes = await API.get('/providers');
-        const formattedProviders = (provRes.data || []).map(transformProvider);
-        setRecommended(formattedProviders.filter((p) => p.recommended));
+        const provRes = await API.get('/providers').catch(() => ({ data: [] }));
+        const rawList = Array.isArray(provRes.data) ? provRes.data : [];
+        const formattedProviders = rawList.map(transformProvider);
+
+        const recs = formattedProviders.filter((p) => p.recommended);
+        // Fallback: If no provider meets the strict Bayesian threshold yet, show top rated
+        setRecommended(
+          recs.length > 0
+            ? recs
+            : [...formattedProviders].sort((a, b) => (b.rating || 0) - (a.rating || 0))
+        );
 
         // 2. Read active authenticated session from localStorage
         const storedUser = localStorage.getItem('user');
@@ -45,7 +53,8 @@ export default function Dashboard() {
         // 3. Fetch real bookings from MongoDB for this authenticated user
         if (parsedUser?._id) {
           const bookRes = await API.get(`/bookings/user/${parsedUser._id}`).catch(() => ({ data: [] }));
-          const formattedBookings = (bookRes.data || []).map(transformBooking);
+          const rawBookings = Array.isArray(bookRes.data) ? bookRes.data : [];
+          const formattedBookings = rawBookings.map(transformBooking);
           setUserBookings(formattedBookings);
         } else {
           setUserBookings([]);
@@ -61,6 +70,8 @@ export default function Dashboard() {
   }, []);
 
   const handleCancelBooking = async (bookingId) => {
+    if (!bookingId) return;
+
     const confirmed = window.confirm('Are you sure you want to cancel this booking?');
     if (!confirmed) return;
 
@@ -133,6 +144,8 @@ export default function Dashboard() {
                 {userBookings.map((booking) => {
                   const bId = booking.id || booking._id;
                   const bStatus = (booking.status || 'pending').toLowerCase();
+                  const targetProviderId = booking.providerId?._id || booking.providerId;
+
                   return (
                     <div
                       key={bId}
@@ -173,12 +186,14 @@ export default function Dashboard() {
                           </button>
                         )}
 
-                        <Link
-                          to={`/provider/${booking.providerId}`}
-                          className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
-                        >
-                          Details
-                        </Link>
+                        {targetProviderId && (
+                          <Link
+                            to={`/provider/${targetProviderId}`}
+                            className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
+                          >
+                            Details
+                          </Link>
+                        )}
                       </div>
                     </div>
                   );
@@ -202,8 +217,8 @@ export default function Dashboard() {
           <section>
             <h2 className="text-lg font-bold text-text-primary mb-4">Browse Categories</h2>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {categories.slice(0, 6).map((cat) => (
-                <CategoryCard key={cat.id} category={cat} />
+              {(categories || []).slice(0, 6).map((cat) => (
+                <CategoryCard key={cat.id || cat._id || cat.name} category={cat} />
               ))}
             </div>
           </section>
@@ -216,13 +231,13 @@ export default function Dashboard() {
               <HiBell className="w-5 h-5 text-primary" />
               <h3 className="font-bold text-text-primary">Notifications</h3>
               <span className="ml-auto text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                {notifications.filter((n) => !n.read).length} new
+                {(notifications || []).filter((n) => !n.read).length} new
               </span>
             </div>
             <div className="divide-y divide-border">
-              {notifications.map((notif) => (
+              {(notifications || []).map((notif) => (
                 <div
-                  key={notif.id}
+                  key={notif.id || notif._id}
                   className={`px-5 py-3.5 hover:bg-gray-50 transition-colors ${
                     !notif.read ? 'bg-blue-50/30' : ''
                   }`}
@@ -241,9 +256,21 @@ export default function Dashboard() {
             <div className="space-y-3">
               {[
                 { label: 'Total Bookings', value: userBookings.length, color: 'text-primary' },
-                { label: 'Completed', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'completed').length, color: 'text-emerald-600' },
-                { label: 'Pending', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'pending').length, color: 'text-amber-600' },
-                { label: 'Confirmed', value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'confirmed').length, color: 'text-blue-600' },
+                {
+                  label: 'Completed',
+                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'completed').length,
+                  color: 'text-emerald-600',
+                },
+                {
+                  label: 'Pending',
+                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'pending').length,
+                  color: 'text-amber-600',
+                },
+                {
+                  label: 'Confirmed',
+                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'confirmed').length,
+                  color: 'text-blue-600',
+                },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-center justify-between">
                   <span className="text-sm text-text-secondary">{stat.label}</span>

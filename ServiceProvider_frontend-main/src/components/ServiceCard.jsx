@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom';
 import RatingStars from './RatingStars';
-import { HiCheckCircle, HiBadgeCheck } from 'react-icons/hi';
+import { HiCheckCircle } from 'react-icons/hi';
 
 export default function ServiceCard({ provider }) {
+  const targetId = provider.id || provider._id;
+
   return (
     <Link
-      to={`/provider/${provider.id}`}
+      to={`/provider/${targetId}`}
       className="group block bg-white rounded-2xl card-shadow hover:card-shadow-hover transition-all duration-300 hover:-translate-y-1 overflow-hidden border border-transparent hover:border-primary/20"
     >
       {/* Recommended Badge */}
@@ -20,8 +22,8 @@ export default function ServiceCard({ provider }) {
           {/* Avatar */}
           <div className="relative shrink-0">
             <img
-              src={provider.image}
-              alt={provider.name}
+              src={provider.image || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face'}
+              alt={provider.name || 'Professional'}
               className="w-16 h-16 rounded-xl object-cover ring-2 ring-gray-100 group-hover:ring-primary/30 transition-all duration-300"
             />
             {provider.verified && (
@@ -34,33 +36,33 @@ export default function ServiceCard({ provider }) {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <h3 className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
-                  {provider.name}
+                  {provider.name || 'Verified Professional'}
                 </h3>
-                <p className="text-xs text-text-muted mt-0.5">{provider.category}</p>
+                <p className="text-xs text-text-muted mt-0.5">{provider.category || 'General Service'}</p>
               </div>
               <span className="shrink-0 text-sm font-bold text-primary">
-                ₹{provider.price}
+                ₹{provider.price || 299}
               </span>
             </div>
 
             <div className="mt-2">
-              <RatingStars rating={provider.rating} />
+              <RatingStars rating={provider.rating || 4.5} />
             </div>
 
             <div className="mt-2 flex items-center gap-3 text-xs text-text-secondary">
-              <span>{provider.experience} exp</span>
+              <span>{provider.experience || '3+ years'}</span>
               <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-              <span>{provider.distance}</span>
+              <span>{provider.distance || '2.5 km'}</span>
               <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-              <span>{provider.reviews} reviews</span>
+              <span>{provider.reviews || 0} reviews</span>
             </div>
           </div>
         </div>
 
-        {/* Book Button */}
-        <button className="mt-4 w-full py-2.5 bg-primary/5 text-primary text-sm font-semibold rounded-xl group-hover:bg-primary group-hover:text-white transition-all duration-300">
-          Book Now
-        </button>
+        {/* Interactive action indicator */}
+        <div className="mt-4 w-full py-2.5 bg-primary/5 text-primary text-sm font-semibold rounded-xl group-hover:bg-primary group-hover:text-white transition-all duration-300 text-center">
+          View Profile & Book
+        </div>
       </div>
     </Link>
   );

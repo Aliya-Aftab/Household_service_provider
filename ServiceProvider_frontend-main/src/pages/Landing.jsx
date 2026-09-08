@@ -1,12 +1,53 @@
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
 import CategoryCard from '../components/CategoryCard';
 import ServiceCard from '../components/ServiceCard';
+import API, { transformProvider } from '../utils/api';
 import { categories } from '../data/categories';
-import { providers } from '../data/providers';
+import { providers as fallbackProviders } from '../data/providers';
 
 export default function Landing() {
-  const featuredProviders = providers.filter((p) => p.recommended);
+  const navigate = useNavigate();
+  const [featuredProviders, setFeaturedProviders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch real providers from MongoDB Atlas for "Featured Providers"
+  useEffect(() => {
+    const loadFeatured = async () => {
+      try {
+        const res = await API.get('/providers');
+        const list = Array.isArray(res.data) ? res.data : [];
+        const formatted = list.map(transformProvider);
+        const recs = formatted.filter((p) => p.recommended);
+
+        // Use live recommended providers, or fallback to top-rated live providers
+        if (recs.length > 0) {
+          setFeaturedProviders(recs.slice(0, 3));
+        } else if (formatted.length > 0) {
+          setFeaturedProviders(formatted.slice(0, 3));
+        } else {
+          setFeaturedProviders(fallbackProviders.filter((p) => p.recommended).slice(0, 3));
+        }
+      } catch (err) {
+        console.warn('Using local fallback providers for landing page:', err.message);
+        setFeaturedProviders(fallbackProviders.filter((p) => p.recommended).slice(0, 3));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadFeatured();
+  }, []);
+
+  // When user clicks Search on SearchBar:
+  const handleSearch = ({ service, location }) => {
+    const params = new URLSearchParams();
+    if (service && service.trim()) params.set('search', service.trim());
+    if (location && location.trim()) params.set('location', location.trim());
+
+    navigate(`/services?${params.toString()}`);
+  };
 
   return (
     <div>
@@ -30,16 +71,20 @@ export default function Landing() {
             <p className="mt-5 text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
               Book verified professionals for home services. From electricians to beauticians — quality service at your doorstep.
             </p>
+
+            {/* Search Bar WIRED WITH onSearch */}
             <div className="mt-8 max-w-2xl mx-auto">
-              <SearchBar />
+              <SearchBar onSearch={handleSearch} />
             </div>
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-text-muted">
+
+            {/* Popular Pills */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-text-muted">
               <span>Popular:</span>
               {['Electrician', 'Plumber', 'AC Repair', 'Cleaner'].map((s) => (
                 <Link
                   key={s}
-                  to={`/services?category=${s}`}
-                  className="px-3 py-1 rounded-full bg-white border border-border hover:border-primary/50 hover:text-primary transition-all duration-200"
+                  to={`/services?search=${encodeURIComponent(s)}`}
+                  className="px-3.5 py-1 rounded-full bg-white border border-border hover:border-primary/50 hover:text-primary transition-all duration-200 text-xs sm:text-sm font-medium cursor-pointer shadow-xs"
                 >
                   {s}
                 </Link>
@@ -76,12 +121,12 @@ export default function Landing() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {categories.map((cat) => (
-            <CategoryCard key={cat.id} category={cat} />
+            <CategoryCard key={cat.id || cat.name} category={cat} />
           ))}
         </div>
       </section>
 
-      {/* Featured Providers */}
+      {/* Featured Providers (Live MongoDB) */}
       <section className="bg-surface py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-end justify-between mb-10">
@@ -96,11 +141,13 @@ export default function Landing() {
               View All →
             </Link>
           </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {featuredProviders.map((provider) => (
-              <ServiceCard key={provider.id} provider={provider} />
+              <ServiceCard key={provider.id || provider._id} provider={provider} />
             ))}
           </div>
+
           <div className="mt-8 text-center sm:hidden">
             <Link
               to="/services"
@@ -127,13 +174,13 @@ export default function Landing() {
             <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 to="/services"
-                className="px-8 py-3 bg-white text-primary font-semibold rounded-xl hover:bg-blue-50 transition-colors"
+                className="px-8 py-3 bg-white text-primary font-semibold rounded-xl hover:bg-blue-50 transition-colors cursor-pointer"
               >
                 Get Started
               </Link>
               <Link
-                to="/"
-                className="px-8 py-3 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors"
+                to="/services"
+                className="px-8 py-3 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
               >
                 Learn More
               </Link>

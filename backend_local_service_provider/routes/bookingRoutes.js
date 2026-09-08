@@ -10,7 +10,7 @@ import {
 const router = express.Router();
 
 router.post("/", createBooking);
-router.get("/", getAllBookings); // Serves GET /api/bookings
+router.get("/", getAllBookings);
 router.patch("/:id/status", updateBookingStatus);
 
 router.get("/user/:id", getUserBookings);

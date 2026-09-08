@@ -7,7 +7,7 @@ export default function SearchBar({ onSearch, className = '' }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSearch?.({ service, location });
+    onSearch?.({ service: service.trim(), location: location.trim() });
   };
 
   return (
@@ -19,7 +19,7 @@ export default function SearchBar({ onSearch, className = '' }) {
         <HiSearch className="w-5 h-5 text-text-muted shrink-0" />
         <input
           type="text"
-          placeholder="What service do you need?"
+          placeholder="What service do you need? (e.g. Electrician, Plumbing)"
           value={service}
           onChange={(e) => setService(e.target.value)}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
@@ -30,7 +30,7 @@ export default function SearchBar({ onSearch, className = '' }) {
         <HiLocationMarker className="w-5 h-5 text-text-muted shrink-0" />
         <input
           type="text"
-          placeholder="Your location"
+          placeholder="Your location or area"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
