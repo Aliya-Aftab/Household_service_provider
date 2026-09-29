@@ -7,8 +7,11 @@ const ServiceProviderProfileSchema = new mongoose.Schema({
   },
 
   aadhaarImage: { type: String, required: true }, // cloud URL
+  profilePicture: { type: String }, // cloud URL
+  certificates: [{ type: String }], // array of cloud URLs
   isVerified: { type: Boolean, default: false },
   verifiedByAdmin: { type: Boolean, default: false },
+  telephonicVerified: { type: Boolean, default: false },
 
   servicesOffered: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -28,6 +31,7 @@ const ServiceProviderProfileSchema = new mongoose.Schema({
     type: { type: String, enum: ["Point"], default: "Point" },
     coordinates: { type: [Number]} // [lng, lat]
   },
+  locationName: { type: String },
 
   avgRating: { type: Number, default: 0 },
   totalRatings: { type: Number, default: 0 },

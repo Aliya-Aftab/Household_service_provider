@@ -23,6 +23,15 @@ export default function AdminDashboard() {
   const [providersList, setProvidersList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [verifyingId, setVerifyingId] = useState(null);
+  const [expandedProvider, setExpandedProvider] = useState(null);
+  const [lightboxSrc, setLightboxSrc] = useState(null);
+
+  // Close lightbox on Escape key
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
 
   const statusColor = {
     confirmed: 'bg-blue-50 text-blue-600',
@@ -44,7 +53,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Admin one-click provider verification
   const handleVerifyProvider = async (providerId) => {
     setVerifyingId(providerId);
     try {
@@ -60,13 +68,56 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleTelephonicVerify = async (providerId) => {
+    setVerifyingId(`tel-${providerId}`);
+    try {
+      await API.patch(`/providers/${providerId}/telephonic-verify`);
+      setProvidersList((prev) =>
+        prev.map((p) => (p.id === providerId ? { ...p, telephonicVerified: true } : p))
+      );
+    } catch (err) {
+      console.error('Failed to telephonic verify provider:', err);
+      alert('Failed to update telephonic verification. Please try again.');
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleDeleteProvider = async (providerId) => {
+    if (!window.confirm("Are you sure you want to delete this provider request? This action cannot be undone.")) return;
+    
+    try {
+      await API.delete(`/providers/${providerId}`);
+      setProvidersList((prev) => prev.filter((p) => p.id !== providerId));
+    } catch (err) {
+      console.error('Failed to delete provider:', err);
+      alert('Failed to delete provider. Please try again.');
+    }
+  };
+
+  const handleDeleteUser = async (userId, role) => {
+    if (role === 'admin') {
+      alert('Admin accounts cannot be deleted.');
+      return;
+    }
+    if (!window.confirm('Are you sure you want to delete this user? They will no longer appear in the system.')) return;
+
+    try {
+      await API.delete(`/users/${userId}`);
+      setUsersList((prev) => prev.filter((u) => u.id !== userId));
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      alert('Failed to delete user. Please try again.');
+    }
+  };
+
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
         const [bookingsRes, usersRes, providersRes] = await Promise.all([
           API.get('/bookings').catch(() => ({ data: [] })),
           API.get('/users').catch(() => ({ data: [] })),
-          API.get('/providers').catch(() => ({ data: [] })),
+          API.get('/providers/admin/all').catch(() => ({ data: [] })),
         ]);
 
         const rawBookings = bookingsRes.data || [];
@@ -245,9 +296,15 @@ export default function AdminDashboard() {
               <th className="text-left text-xs font-semibold text-text-secondary px-6 py-3">Joined</th>
               <th className="text-left text-xs font-semibold text-text-secondary px-6 py-3">Bookings</th>
               <th className="text-left text-xs font-semibold text-text-secondary px-6 py-3">Status</th>
+              <th className="text-left text-xs font-semibold text-text-secondary px-6 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
+            {usersList.length === 0 && (
+              <tr>
+                <td colSpan="7" className="px-6 py-8 text-center text-sm text-text-secondary">No users found.</td>
+              </tr>
+            )}
             {usersList.map((u) => (
               <tr key={u.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-6 py-3 text-sm font-medium text-text-primary">{u.name}</td>
@@ -260,6 +317,19 @@ export default function AdminDashboard() {
                     {u.status}
                   </span>
                 </td>
+                <td className="px-6 py-3">
+                  {u.role !== 'admin' ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUser(u.id, u.role)}
+                      className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
+                    >
+                      🗑️ Delete
+                    </button>
+                  ) : (
+                    <span className="text-xs text-text-muted">—</span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -268,56 +338,171 @@ export default function AdminDashboard() {
     </div>
   );
 
+  // Helper to check if string is Base64 data URI
+  const isBase64 = (str) => str && str.startsWith('data:');
+
+  // Helper to render an image/doc — click to open in lightbox
+  const renderDoc = (src, label) => {
+    if (!src || src === 'default_id_url') return null;
+    if (isBase64(src)) {
+      return (
+        <div className="mt-2">
+          <p className="text-[10px] font-semibold text-text-muted mb-1">{label}</p>
+          <div className="relative group inline-block">
+            <img
+              src={src}
+              alt={label}
+              onClick={() => setLightboxSrc(src)}
+              className="w-full max-w-xs rounded-lg border border-border object-contain max-h-48 cursor-zoom-in hover:opacity-90 transition-opacity"
+            />
+            <div
+              onClick={() => setLightboxSrc(src)}
+              className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-lg transition-all cursor-zoom-in"
+            >
+              <span className="text-white text-xs font-bold opacity-0 group-hover:opacity-100 bg-black/60 px-2 py-1 rounded transition-opacity">
+                🔍 Click to Expand
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <a href={src} target="_blank" rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-primary/10 px-2 py-1 rounded mt-1">
+        🔗 {label}
+      </a>
+    );
+  };
+
   const renderProvidersList = () => (
     <div className="bg-white rounded-2xl card-shadow border border-border/50 overflow-hidden">
       <div className="px-6 py-4 border-b border-border flex justify-between items-center">
         <h3 className="font-bold text-text-primary">Service Providers Verification & Roster</h3>
         <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">{providersList.length} Total</span>
       </div>
-      <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {providersList.map((p, i) => (
-          <div key={p.id} className="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:bg-gray-50 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/10 to-accent/10 flex items-center justify-center shrink-0">
-              <span className="text-base font-bold text-primary">#{i + 1}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-text-primary truncate">{p.name}</p>
-                {p.verified ? (
-                  <span className="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-0.5 rounded-full">
-                    Verified
-                  </span>
-                ) : (
-                  <span className="text-[10px] bg-amber-50 text-amber-600 font-semibold px-2 py-0.5 rounded-full">
-                    Pending
-                  </span>
-                )}
+      <div className="p-4 grid grid-cols-1 gap-3">
+        {providersList.length === 0 && (
+          <p className="text-sm text-text-secondary text-center py-8">No providers registered yet.</p>
+        )}
+        {providersList.map((p) => (
+          <div key={p.id} className="rounded-xl border border-border/60 overflow-hidden">
+            {/* --- Summary Row (always visible) --- */}
+            <div
+              className="flex flex-col md:flex-row items-start md:items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+              onClick={() => setExpandedProvider(expandedProvider === p.id ? null : p.id)}
+            >
+              <div className="relative group shrink-0">
+                <img
+                  src={p.image}
+                  alt={p.name}
+                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(p.image); }}
+                  className="w-14 h-14 rounded-xl object-cover border border-border cursor-zoom-in hover:opacity-90 transition-opacity"
+                  onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face"; }}
+                />
+                <div className="absolute inset-0 rounded-xl flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all pointer-events-none">
+                  <span className="text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">🔍</span>
+                </div>
               </div>
-              <p className="text-xs text-text-muted">{p.category} • ⭐ {p.rating} ({p.reviews} reviews)</p>
-              <p className="text-xs text-text-secondary mt-0.5">{p.experience}</p>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-text-primary">{p.name}</p>
+                  {p.verified ? (
+                    <span className="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-0.5 rounded-full">✅ Verified</span>
+                  ) : (
+                    <span className="text-[10px] bg-amber-50 text-amber-600 font-semibold px-2 py-0.5 rounded-full">⏳ Pending</span>
+                  )}
+                  {p.telephonicVerified && (
+                    <span className="text-[10px] bg-blue-50 text-blue-600 font-semibold px-2 py-0.5 rounded-full">📞 Called</span>
+                  )}
+                </div>
+                <p className="text-xs text-text-muted mt-0.5">{p.category} • 📍 {p.location} • Joined: {p.joinedAt}</p>
+                <p className="text-xs text-text-secondary mt-0.5">📞 {p.phone} &nbsp;|&nbsp; ✉️ {p.email}</p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-text-muted">{expandedProvider === p.id ? '▲ Hide' : '▼ Details'}</span>
+              </div>
             </div>
-            
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <span className="text-sm font-bold text-primary">₹{p.price}</span>
-              {!p.verified && (
-                <button
-                  type="button"
-                  onClick={() => handleVerifyProvider(p.id)}
-                  disabled={verifyingId === p.id}
-                  className="text-xs font-semibold px-2.5 py-1 bg-primary text-white rounded-lg hover:bg-primary-dark transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  {verifyingId === p.id ? 'Verifying...' : 'Verify'}
-                </button>
-              )}
-            </div>
+
+            {/* --- Expanded Detail Panel --- */}
+            {expandedProvider === p.id && (
+              <div className="px-4 pb-4 pt-2 border-t border-border/40 bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left: Documents */}
+                  <div>
+                    <p className="text-xs font-bold text-text-primary mb-2">📄 Submitted Documents</p>
+                    {renderDoc(p.aadhaarImage, 'Aadhaar / ID Proof')}
+                    {p.certificates.length > 0 ? (
+                      p.certificates.map((cert, idx) => renderDoc(cert, `Certificate ${idx + 1}`))
+                    ) : (
+                      <p className="text-xs text-text-muted mt-1">No certificates uploaded.</p>
+                    )}
+                  </div>
+
+                  {/* Right: Actions */}
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs font-bold text-text-primary mb-1">🛡️ Admin Actions</p>
+
+                    {!p.telephonicVerified ? (
+                      <button type="button" onClick={() => handleTelephonicVerify(p.id)}
+                        disabled={verifyingId === `tel-${p.id}`}
+                        className="text-xs font-semibold px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer disabled:opacity-50">
+                        {verifyingId === `tel-${p.id}` ? 'Saving...' : '📞 Mark Telephonic Verified'}
+                      </button>
+                    ) : (
+                      <span className="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-2 rounded-lg text-center">📞 Telephonic Verified</span>
+                    )}
+
+                    {!p.verified ? (
+                      <button type="button" onClick={() => handleVerifyProvider(p.id)}
+                        disabled={verifyingId === p.id}
+                        className="text-xs font-semibold px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer disabled:opacity-50">
+                        {verifyingId === p.id ? 'Verifying...' : '✅ Approve & Verify'}
+                      </button>
+                    ) : (
+                      <span className="text-xs bg-emerald-50 text-emerald-600 font-semibold px-3 py-2 rounded-lg text-center">✅ Fully Verified</span>
+                    )}
+
+                    <button type="button" onClick={() => handleDeleteProvider(p.id)}
+                      className="text-xs font-semibold px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors cursor-pointer mt-2">
+                      🗑️ Delete Provider
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
     </div>
   );
 
+
   return (
     <div className="space-y-8">
+
+      {/* ===== FULL-SCREEN IMAGE LIGHTBOX ===== */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            onClick={() => setLightboxSrc(null)}
+            className="absolute top-4 right-4 text-white text-3xl font-bold bg-black/50 hover:bg-black/80 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-colors z-10"
+          >
+            ×
+          </button>
+          <img
+            src={lightboxSrc}
+            alt="Document Preview"
+            onClick={(e) => e.stopPropagation()}
+            className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl border border-white/20"
+          />
+          <p className="absolute bottom-4 text-white/60 text-xs">Press Esc or click outside to close</p>
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-text-primary">
           {currentPath === '/admin/users' && 'Users Management'}

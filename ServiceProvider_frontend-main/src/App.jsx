@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 import MainLayout from './layouts/MainLayout';
 import AdminLayout from './layouts/AdminLayout';
 import Landing from './pages/Landing';
@@ -8,8 +9,36 @@ import ProviderProfile from './pages/ProviderProfile';
 import Booking from './pages/Booking';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import API from './utils/api';
 
 export default function App() {
+
+  // Silently refresh location for already-logged-in users on every app load
+  useEffect(() => {
+    const user = localStorage.getItem('user');
+    if (!user) return;
+
+    const parsedUser = JSON.parse(user);
+    if (!parsedUser?._id) return;
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await API.patch('/users/location', {
+              userId: parsedUser._id,
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            });
+          } catch (e) {
+            // Silent fail — location update is non-critical
+          }
+        },
+        () => {} // Silently ignore if denied
+      );
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <Routes>
@@ -36,4 +65,4 @@ export default function App() {
       </Routes>
     </BrowserRouter>
   );
-}
+}

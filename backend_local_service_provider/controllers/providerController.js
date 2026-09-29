@@ -38,8 +38,22 @@ export const getProviderById = async (req, res) => {
   }
 };
 
-/* GET ALL PROVIDERS */
+/* GET ALL VERIFIED PROVIDERS (public - only show verified) */
 export const getAllProviders = async (req, res) => {
+  try {
+    const providers = await ServiceProviderProfile
+      .find({ isVerified: true })
+      .populate("userId")
+      .populate("servicesOffered");
+
+    res.json(providers);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* GET ALL PROVIDERS FOR ADMIN (includes unverified/pending) */
+export const getAllProvidersAdmin = async (req, res) => {
   try {
     const providers = await ServiceProviderProfile
       .find()
@@ -57,18 +71,24 @@ export const getNearbyProviders = async (req, res) => {
   try {
     const { lng, lat, categoryId } = req.query;
 
-    const providers = await ServiceProviderProfile.find({
-      servicesOffered: categoryId,
+    const query = {
+      isVerified: true,
       location: {
         $near: {
           $geometry: {
             type: "Point",
             coordinates: [parseFloat(lng), parseFloat(lat)]
           },
-          $maxDistance: 10000 // 10 km
+          $maxDistance: 5000 // 5 km
         }
       }
-    }).populate("userId","-password");
+    };
+
+    if (categoryId) {
+      query.servicesOffered = categoryId;
+    }
+
+    const providers = await ServiceProviderProfile.find(query).populate("userId","-password");
 
     res.json(providers);
   } catch (err) {
@@ -125,6 +145,24 @@ export const verifyProvider = async (req, res) => {
     await provider.save();
 
     res.json({ message: "Provider verified successfully", provider });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* TELEPHONIC VERIFY PROVIDER PROFILE (ADMIN ONLY) */
+export const telephonicVerifyProvider = async (req, res) => {
+  try {
+    const provider = await ServiceProviderProfile.findById(req.params.id);
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found" });
+    }
+
+    provider.telephonicVerified = true;
+    await provider.save();
+
+    res.json({ message: "Provider telephonic verification successful", provider });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

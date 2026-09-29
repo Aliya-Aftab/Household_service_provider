@@ -13,7 +13,7 @@ export default function Services() {
   const [rawProviders, setRawProviders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [searchQuery, setSearchQuery] = useState({ service: '', location: '' });
+  const [searchQuery, setSearchQuery] = useState({ service: '', location: '', coords: null });
 
   const [filters, setFilters] = useState({
     category: initialCategory,
@@ -31,21 +31,26 @@ export default function Services() {
   }, [searchParams]);
 
   // Fetch real data from MongoDB
-  useEffect(() => {
-    const fetchProviders = async () => {
-      try {
-        const res = await API.get('/providers');
-        const formatted = res.data.map(transformProvider);
-        setRawProviders(formatted);
-      } catch (err) {
-        console.error('Failed to load providers from backend:', err);
-      } finally {
-        setLoading(false);
+  const fetchProviders = async (coords = null) => {
+    setLoading(true);
+    try {
+      let endpoint = '/providers';
+      if (coords) {
+        endpoint = `/providers/nearby?lng=${coords.lng}&lat=${coords.lat}`;
       }
-    };
+      const res = await API.get(endpoint);
+      const formatted = res.data.map(transformProvider);
+      setRawProviders(formatted);
+    } catch (err) {
+      console.error('Failed to load providers from backend:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchProviders();
-  }, []);
+  useEffect(() => {
+    fetchProviders(searchQuery.coords);
+  }, [searchQuery.coords]);
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
@@ -56,13 +61,13 @@ export default function Services() {
     }
   };
 
-  const handleSearch = ({ service, location }) => {
-    setSearchQuery({ service, location });
+  const handleSearch = ({ service, location, coords }) => {
+    setSearchQuery({ service, location, coords });
   };
 
   const handleResetFilters = () => {
     setFilters({ category: 'All', priceRange: null, minRating: null, distance: null });
-    setSearchQuery({ service: '', location: '' });
+    setSearchQuery({ service: '', location: '', coords: null });
     setSearchParams({});
   };
 
@@ -80,8 +85,8 @@ export default function Services() {
       );
     }
 
-    // Smart tokenized location filtering
-    if (searchQuery.location.trim()) {
+    // Smart tokenized location filtering (only if not using GPS coordinates)
+    if (searchQuery.location.trim() && !searchQuery.coords && searchQuery.location !== 'Current Location') {
       const tokens = searchQuery.location
         .toLowerCase()
         .split(/[,\s]+/)
@@ -166,7 +171,7 @@ export default function Services() {
             </span>
           )}
           <button
-            onClick={() => setSearchQuery({ service: '', location: '' })}
+            onClick={() => setSearchQuery({ service: '', location: '', coords: null })}
             className="text-xs text-red-500 hover:underline ml-1 cursor-pointer"
           >
             Clear Search
