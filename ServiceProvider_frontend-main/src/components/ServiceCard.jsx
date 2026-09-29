@@ -47,10 +47,18 @@ export default function ServiceCard({ provider }) {
               <RatingStars rating={provider.rating} />
             </div>
 
-            <div className="mt-2 flex items-center gap-3 text-xs text-text-secondary">
-              <span>{provider.experience} exp</span>
+            <div className="mt-2.5 flex items-center flex-wrap gap-2 text-xs text-text-secondary">
+              <span className="font-medium text-text-primary">{provider.experience} exp</span>
               <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-              <span>{provider.distance}</span>
+              {provider.distanceKm !== null && provider.distanceKm !== undefined ? (
+                <span className="inline-flex items-center gap-1 font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                  📍 {provider.distance}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-medium text-text-primary bg-gray-100 px-2 py-0.5 rounded-md">
+                  📍 {provider.location || provider.city || 'Bengaluru'}
+                </span>
+              )}
               <span className="w-1 h-1 rounded-full bg-gray-300"></span>
               <span>{provider.reviews} reviews</span>
             </div>

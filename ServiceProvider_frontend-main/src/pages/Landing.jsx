@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
 import CategoryCard from '../components/CategoryCard';
 import ServiceCard from '../components/ServiceCard';
@@ -6,7 +6,19 @@ import { categories } from '../data/categories';
 import { providers } from '../data/providers';
 
 export default function Landing() {
+  const navigate = useNavigate();
   const featuredProviders = providers.filter((p) => p.recommended);
+
+  const handleSearch = ({ service, location, coords }) => {
+    const params = new URLSearchParams();
+    if (service) params.set('service', service);
+    if (location) params.set('location', location);
+    if (coords?.lat && coords?.lng) {
+      params.set('lat', coords.lat);
+      params.set('lng', coords.lng);
+    }
+    navigate(`/services?${params.toString()}`);
+  };
 
   return (
     <div>
@@ -28,17 +40,17 @@ export default function Landing() {
               </span>
             </h1>
             <p className="mt-5 text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
-              Book verified professionals for home services. From electricians to beauticians — quality service at your doorstep.
+              Book verified professionals for home services within your area. From electricians to beauticians — quality service at your doorstep.
             </p>
             <div className="mt-8 max-w-2xl mx-auto">
-              <SearchBar />
+              <SearchBar onSearch={handleSearch} />
             </div>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-text-muted">
               <span>Popular:</span>
-              {['Electrician', 'Plumber', 'AC Repair', 'Cleaner'].map((s) => (
+              {['Electrician', 'Plumber', 'AC Repair', 'Cleaner', 'Carpenter'].map((s) => (
                 <Link
                   key={s}
-                  to={`/services?category=${s}`}
+                  to={`/services?service=${encodeURIComponent(s)}`}
                   className="px-3 py-1 rounded-full bg-white border border-border hover:border-primary/50 hover:text-primary transition-all duration-200"
                 >
                   {s}

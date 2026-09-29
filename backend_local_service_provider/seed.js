@@ -46,6 +46,7 @@ const seed = async () => {
           experienceYears: 8,
           skills: ["Switchboard Repair", "Fan Installation", "Wiring Work", "MCB/Fuse Replacement"],
           location: { type: "Point", coordinates: [77.6245, 12.9352] },
+          locationName: "Bengaluru",
           avgRating: 4.8,
           totalRatings: 234,
           bayesianScore: 4.75
@@ -61,6 +62,7 @@ const seed = async () => {
           experienceYears: 6,
           skills: ["Facial Treatment", "Hair Styling", "Bridal Makeup", "Manicure & Pedicure"],
           location: { type: "Point", coordinates: [77.6412, 12.9716] },
+          locationName: "Bengaluru",
           avgRating: 4.9,
           totalRatings: 312,
           bayesianScore: 4.85
@@ -76,6 +78,7 @@ const seed = async () => {
           experienceYears: 10,
           skills: ["Furniture Repair", "Door Fitting", "Custom Shelving"],
           location: { type: "Point", coordinates: [77.5946, 12.9716] },
+          locationName: "Bengaluru",
           avgRating: 4.7,
           totalRatings: 156,
           bayesianScore: 4.65
@@ -91,6 +94,7 @@ const seed = async () => {
           experienceYears: 7,
           skills: ["AC Servicing", "Gas Refill", "Compressor Check"],
           location: { type: "Point", coordinates: [77.6101, 12.925] },
+          locationName: "Bengaluru",
           avgRating: 4.8,
           totalRatings: 198,
           bayesianScore: 4.72
@@ -99,7 +103,10 @@ const seed = async () => {
     ];
 
     for (const item of providerRecords) {
-      const createdUser = await User.create(item.user);
+      const createdUser = await User.create({
+        ...item.user,
+        locationName: item.profile.locationName,
+      });
       await ServiceProviderProfile.create({
         userId: createdUser._id,
         aadhaarImage: item.profile.aadhaarImage,
@@ -109,6 +116,7 @@ const seed = async () => {
         experienceYears: item.profile.experienceYears,
         skills: item.profile.skills,
         location: item.profile.location,
+        locationName: item.profile.locationName,
         avgRating: item.profile.avgRating,
         totalRatings: item.profile.totalRatings,
         bayesianScore: item.profile.bayesianScore

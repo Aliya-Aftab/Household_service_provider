@@ -32,21 +32,63 @@ export const getProviderById = async (req, res) => {
       return res.status(404).json({ message: "Provider not found" });
     }
 
-    res.json(provider);
+    const pObj = provider.toObject();
+    pObj.locationName = ensureCityName(pObj);
+
+    res.json(pObj);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-/* GET ALL VERIFIED PROVIDERS (public - only show verified) */
+// Helper to resolve a clean city name from provider profile
+const ensureCityName = (providerObj) => {
+  if (
+    providerObj.locationName &&
+    !providerObj.locationName.startsWith("GPS:") &&
+    providerObj.locationName !== "undefined" &&
+    providerObj.locationName !== "Live Location Pending"
+  ) {
+    return providerObj.locationName;
+  }
+  return "Verified Location";
+};
+
+// Haversine formula to calculate distance between two coordinates in kilometers
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10; // Round to 1 decimal place
+};
+
+/* GET ALL VERIFIED PROVIDERS (public - only show verified, with optional distance calculation) */
 export const getAllProviders = async (req, res) => {
   try {
+    const { lng, lat } = req.query;
     const providers = await ServiceProviderProfile
       .find({ isVerified: true })
-      .populate("userId")
+      .populate("userId", "-password")
       .populate("servicesOffered");
 
-    res.json(providers);
+    const results = providers.map((p) => {
+      const pObj = p.toObject();
+      pObj.locationName = ensureCityName(pObj);
+      const coords = p.location?.coordinates;
+      if (lng && lat && Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        pObj.distanceKm = haversineDistanceKm(parseFloat(lat), parseFloat(lng), coords[1], coords[0]);
+      }
+      return pObj;
+    });
+
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -60,37 +102,88 @@ export const getAllProvidersAdmin = async (req, res) => {
       .populate("userId")
       .populate("servicesOffered");
 
-    res.json(providers);
+    const results = providers.map((p) => {
+      const pObj = p.toObject();
+      pObj.locationName = ensureCityName(pObj);
+      return pObj;
+    });
+
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-/* GET NEARBY PROVIDERS */
+/* GET NEARBY PROVIDERS (filtered by km distance limit and service keyword) */
 export const getNearbyProviders = async (req, res) => {
   try {
-    const { lng, lat, categoryId } = req.query;
+    const { lng, lat, categoryId, service, maxKm } = req.query;
 
-    const query = {
-      isVerified: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)]
-          },
-          $maxDistance: 5000 // 5 km
-        }
-      }
-    };
-
-    if (categoryId) {
-      query.servicesOffered = categoryId;
+    if (!lng || !lat) {
+      return res.status(400).json({ message: "Latitude and longitude are required" });
     }
 
-    const providers = await ServiceProviderProfile.find(query).populate("userId","-password");
+    const userLng = parseFloat(lng);
+    const userLat = parseFloat(lat);
+    const limitKm = maxKm ? parseFloat(maxKm) : 25; // Default system limit: 25 km
 
-    res.json(providers);
+    // Fetch only verified providers with populated user and categories
+    const providers = await ServiceProviderProfile.find({ isVerified: true })
+      .populate("userId", "-password")
+      .populate("servicesOffered");
+
+    const results = [];
+
+    for (const p of providers) {
+      const coords = p.location?.coordinates;
+      let dist = null;
+
+      if (Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        const [pLng, pLat] = coords;
+        dist = haversineDistanceKm(userLat, userLng, pLat, pLng);
+      }
+
+      // Include provider if within distance limit (or if no coordinates, keep dist as null)
+      if (dist !== null && dist <= limitKm) {
+        const pObj = p.toObject();
+        pObj.locationName = ensureCityName(pObj);
+        pObj.distanceKm = dist;
+        results.push(pObj);
+      }
+    }
+
+    // Filter by category if specified
+    let filtered = results;
+    if (categoryId && categoryId !== "All") {
+      filtered = filtered.filter((p) =>
+        p.servicesOffered?.some(
+          (s) =>
+            s._id?.toString() === categoryId ||
+            s.toString() === categoryId ||
+            s.name?.toLowerCase() === categoryId.toLowerCase()
+        )
+      );
+    }
+
+    // Filter by typed service keyword if specified (e.g. "carpenter", "plumber", "cleaner")
+    if (service && service.trim()) {
+      const q = service.toLowerCase().trim();
+      filtered = filtered.filter((p) => {
+        const catMatch = p.servicesOffered?.some(
+          (s) =>
+            (s.name && s.name.toLowerCase().includes(q)) ||
+            (s.description && s.description.toLowerCase().includes(q))
+        );
+        const skillMatch = p.skills?.some((sk) => sk.toLowerCase().includes(q));
+        const nameMatch = p.userId?.name?.toLowerCase().includes(q);
+        return catMatch || skillMatch || nameMatch;
+      });
+    }
+
+    // Sort by nearest distance first
+    filtered.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+
+    res.json(filtered);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

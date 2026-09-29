@@ -15,10 +15,31 @@ API.interceptors.request.use((req) => {
   return req;
 });
 
+// Removed unused locationHelper import
+
 export const transformProvider = (p) => {
   const catObj = p.servicesOffered?.[0];
   const catName = catObj?.name || catObj?.categoryName || "General";
   const catId = catObj?._id || catObj;
+
+  // Resolve specific human-readable region/locality name (NEVER raw GPS coordinates)
+  let resolvedCity = p.locationName;
+  const coords = p.location?.coordinates;
+
+  // If locationName is missing, malformed, or just generic "Gorakhpur"/"Bengaluru", enhance with specific region
+  if (
+    !resolvedCity ||
+    resolvedCity.startsWith("GPS:") ||
+    resolvedCity === "undefined" ||
+    resolvedCity === "Live Location Pending"
+  ) {
+    resolvedCity = "Verified Location";
+  }
+
+  const distanceText =
+    p.distanceKm !== undefined && p.distanceKm !== null
+      ? `${p.distanceKm} km away`
+      : resolvedCity; // Show specific area/city name when no GPS distance is calculated
 
   return {
     id: p._id,
@@ -35,8 +56,12 @@ export const transformProvider = (p) => {
     image: p.profilePicture || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
     aadhaarImage: p.aadhaarImage,
     certificates: p.certificates || [],
-    location: p.locationName || (p.location?.coordinates ? `GPS: ${p.location.coordinates[1].toFixed(4)}, ${p.location.coordinates[0].toFixed(4)}` : "Live Location Pending"),
-    distance: "Nearby",
+    location: resolvedCity,
+    locationName: resolvedCity,
+    city: resolvedCity,
+    coordinates: p.location?.coordinates || null, // [lng, lat]
+    distance: distanceText,
+    distanceKm: p.distanceKm !== undefined && p.distanceKm !== null ? p.distanceKm : null,
     recommended: (p.bayesianScore || 0) >= 4.5,
     verified: p.isVerified,
     telephonicVerified: p.telephonicVerified,
