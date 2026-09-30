@@ -1,30 +1,65 @@
+import mongoose from "mongoose";
 import Booking from "../models/Booking.js";
 
 /* CREATE BOOKING */
 export const createBooking = async (req, res) => {
   try {
-    const booking = await Booking.create(req.body);
-    res.status(201).json(booking);
+    const { customerId, providerId, serviceCategory, bookingDate, address, price } = req.body;
+
+    if (!customerId || !providerId) {
+      return res.status(400).json({ message: "Customer ID and Provider ID are required." });
+    }
+
+    const bookingPayload = {
+      ...req.body,
+      customerId,
+      providerId,
+      bookingDate: bookingDate ? new Date(bookingDate) : new Date(),
+      price: Number(price) || 299,
+      status: req.body.status || "pending",
+    };
+
+    const booking = await Booking.create(bookingPayload);
+    const populated = await Booking.findById(booking._id)
+      .populate("providerId", "name email phone")
+      .populate("serviceCategory");
+
+    return res.status(201).json(populated || booking);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Booking Creation Error:", err);
+    return res.status(500).json({ message: err.message || "Failed to create booking" });
   }
 };
 
-/* UPDATE STATUS */
+/* UPDATE STATUS (CANCEL / COMPLETE / CONFIRM) */
 export const updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
+    if (!status) {
+      return res.status(400).json({ message: "Status is required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid booking ID format" });
+    }
+
     const booking = await Booking.findByIdAndUpdate(
       id,
-      { status },
+      { status: status.toLowerCase() },
       { new: true }
-    );
+    )
+      .populate("providerId", "name email phone")
+      .populate("serviceCategory");
 
-    res.json(booking);
+    if (!booking) {
+      return res.status(404).json({ message: "Booking not found" });
+    }
+
+    return res.json(booking);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message || "Failed to update booking status" });
   }
 };
 
@@ -33,14 +68,20 @@ export const getUserBookings = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const bookings = await Booking.find({ customerId: id })
-      .populate("providerId", "-password")
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.json([]);
+    }
+
+    const bookings = await Booking.find({
+      $or: [{ customerId: id }, { userId: id }]
+    })
+      .populate("providerId", "name email phone")
       .populate("serviceCategory")
       .sort({ createdAt: -1 });
 
-    res.json(bookings);
+    return res.json(bookings);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message || "Failed to fetch bookings" });
   }
 };
 
@@ -49,14 +90,19 @@ export const getProviderBookings = async (req, res) => {
   try {
     const { id } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.json([]);
+    }
+
     const bookings = await Booking.find({ providerId: id })
-      .populate("customerId", "-password")
+      .populate("customerId", "name email phone")
+      .populate("userId", "name email phone")
       .populate("serviceCategory")
       .sort({ createdAt: -1 });
 
-    res.json(bookings);
+    return res.json(bookings);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message || "Failed to fetch provider bookings" });
   }
 };
 
@@ -65,12 +111,13 @@ export const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
       .populate("customerId", "name email phone")
+      .populate("userId", "name email phone")
       .populate("providerId", "name email phone")
       .populate("serviceCategory")
       .sort({ createdAt: -1 });
 
-    res.json(bookings);
+    return res.json(bookings);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ message: err.message || "Failed to fetch all bookings" });
   }
 };

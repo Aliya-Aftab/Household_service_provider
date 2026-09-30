@@ -1,7 +1,32 @@
+import { useState, useEffect } from 'react';
 import { HiStar, HiX } from 'react-icons/hi';
-import { categories } from '../data/categories';
+import API from '../utils/api';
+import { categories as defaultCategories } from '../data/categories';
 
 export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose }) {
+  const [categoryList, setCategoryList] = useState(defaultCategories);
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const res = await API.get('/categories');
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          const mapped = res.data.map((c, i) => ({
+            id: c._id || i,
+            name: c.name,
+            icon: c.icon || '🛠️',
+          }));
+          setCategoryList(mapped);
+        }
+      } catch (err) {
+        // Fall back to default static categories on network lag
+        setCategoryList(defaultCategories);
+      }
+    };
+
+    loadCategories();
+  }, []);
+
   const priceRanges = [
     { label: 'Under ₹300', min: 0, max: 300 },
     { label: '₹300 - ₹500', min: 300, max: 500 },
@@ -14,7 +39,6 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
 
   return (
     <>
-      {/* Overlay */}
       {isOpen && (
         <div
           className="fixed inset-0 bg-black/30 z-40 lg:hidden"
@@ -29,7 +53,6 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
         `}
       >
         <div className="p-5 lg:p-0">
-          {/* Mobile Header */}
           <div className="flex items-center justify-between mb-6 lg:hidden">
             <h3 className="text-lg font-bold text-text-primary">Filters</h3>
             <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Close filters">
@@ -42,8 +65,9 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             <h4 className="text-sm font-semibold text-text-primary mb-3">Category</h4>
             <div className="space-y-1.5">
               <button
+                type="button"
                 onClick={() => onFilterChange({ ...filters, category: 'All' })}
-                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
                   filters.category === 'All'
                     ? 'bg-primary/10 text-primary font-medium'
                     : 'text-text-secondary hover:bg-gray-50'
@@ -51,18 +75,19 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
               >
                 All Categories
               </button>
-              {categories.map((cat) => (
+              {categoryList.map((cat) => (
                 <button
-                  key={cat.id}
+                  type="button"
+                  key={cat.id || cat.name}
                   onClick={() => onFilterChange({ ...filters, category: cat.name })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors ${
-                    filters.category === cat.name
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors cursor-pointer ${
+                    filters.category?.toLowerCase() === cat.name?.toLowerCase()
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-text-secondary hover:bg-gray-50'
                   }`}
                 >
-                  <span>{cat.icon}</span>
-                  {cat.name}
+                  <span>{cat.icon || '🔧'}</span>
+                  <span>{cat.name}</span>
                 </button>
               ))}
             </div>
@@ -74,9 +99,15 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             <div className="space-y-1.5">
               {priceRanges.map((range) => (
                 <button
+                  type="button"
                   key={range.label}
-                  onClick={() => onFilterChange({ ...filters, priceRange: range.label })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  onClick={() =>
+                    onFilterChange({
+                      ...filters,
+                      priceRange: filters.priceRange === range.label ? null : range.label,
+                    })
+                  }
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
                     filters.priceRange === range.label
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-text-secondary hover:bg-gray-50'
@@ -94,16 +125,22 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             <div className="space-y-1.5">
               {ratings.map((r) => (
                 <button
+                  type="button"
                   key={r}
-                  onClick={() => onFilterChange({ ...filters, minRating: r })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
+                  onClick={() =>
+                    onFilterChange({
+                      ...filters,
+                      minRating: filters.minRating === r ? null : r,
+                    })
+                  }
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-1.5 transition-colors cursor-pointer ${
                     filters.minRating === r
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-text-secondary hover:bg-gray-50'
                   }`}
                 >
                   <HiStar className="w-4 h-4 text-amber-400" />
-                  {r}+ & above
+                  <span>{r}+ & above</span>
                 </button>
               ))}
             </div>
@@ -115,9 +152,15 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             <div className="space-y-1.5">
               {distances.map((d) => (
                 <button
+                  type="button"
                   key={d}
-                  onClick={() => onFilterChange({ ...filters, distance: d })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  onClick={() =>
+                    onFilterChange({
+                      ...filters,
+                      distance: filters.distance === d ? null : d,
+                    })
+                  }
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors cursor-pointer ${
                     filters.distance === d
                       ? 'bg-primary/10 text-primary font-medium'
                       : 'text-text-secondary hover:bg-gray-50'
@@ -131,6 +174,7 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
 
           {/* Clear Filters */}
           <button
+            type="button"
             onClick={() =>
               onFilterChange({
                 category: 'All',
@@ -139,7 +183,7 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
                 distance: null,
               })
             }
-            className="w-full py-2.5 text-sm font-medium text-danger hover:bg-red-50 rounded-xl transition-colors"
+            className="w-full py-2.5 text-sm font-medium text-danger hover:bg-red-50 rounded-xl transition-colors cursor-pointer"
           >
             Clear All Filters
           </button>

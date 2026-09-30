@@ -9,7 +9,11 @@ export default function SearchBar({ onSearch, className = '' }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSearch?.({ service, location, coords });
+    onSearch?.({ 
+      service: service.trim(), 
+      location: location.trim(), 
+      coords 
+    });
   };
 
   const handleGetLocation = () => {
@@ -17,22 +21,30 @@ export default function SearchBar({ onSearch, className = '' }) {
       alert('Geolocation is not supported by your browser');
       return;
     }
-    
+
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         const { latitude, longitude } = position.coords;
         setCoords({ lat: latitude, lng: longitude });
-        
+
         try {
           // Reverse geocode to get a readable address name
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
           const data = await res.json();
-          
+
           if (data && data.display_name) {
             // Extract a shorter version of the address if possible (suburb, city, etc.)
             const address = data.address;
-            const shortName = address.suburb || address.neighbourhood || address.city_district || address.city || address.town || data.display_name.split(',')[0];
+            const shortName =
+              address.suburb ||
+              address.neighbourhood ||
+              address.city_district ||
+              address.city ||
+              address.town ||
+              data.display_name.split(',')[0];
             setLocation(`${shortName} (Current Location)`);
           } else {
             setLocation('Current Location');
@@ -41,7 +53,7 @@ export default function SearchBar({ onSearch, className = '' }) {
           console.error('Reverse geocoding failed:', err);
           setLocation('Current Location');
         }
-        
+
         setIsLocating(false);
       },
       (error) => {
@@ -61,7 +73,7 @@ export default function SearchBar({ onSearch, className = '' }) {
         <HiSearch className="w-5 h-5 text-text-muted shrink-0" />
         <input
           type="text"
-          placeholder="What service do you need?"
+          placeholder="What service do you need? (e.g. Electrician, Plumbing)"
           value={service}
           onChange={(e) => setService(e.target.value)}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
@@ -72,7 +84,7 @@ export default function SearchBar({ onSearch, className = '' }) {
         <HiLocationMarker className="w-5 h-5 text-text-muted shrink-0" />
         <input
           type="text"
-          placeholder="Your location"
+          placeholder="Your location or area"
           value={location}
           onChange={(e) => {
             setLocation(e.target.value);

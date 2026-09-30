@@ -40,7 +40,6 @@ export default function AdminDashboard() {
     cancelled: 'bg-red-50 text-red-600',
   };
 
-  // Live status update to MongoDB
   const handleStatusChange = async (bookingId, newStatus) => {
     try {
       await API.patch(`/bookings/${bookingId}/status`, { status: newStatus });
@@ -58,7 +57,7 @@ export default function AdminDashboard() {
     try {
       await API.patch(`/providers/${providerId}/verify`);
       setProvidersList((prev) =>
-        prev.map((p) => (p.id === providerId ? { ...p, verified: true } : p))
+        prev.map((p) => ((p.id === providerId || p._id === providerId) ? { ...p, verified: true } : p))
       );
     } catch (err) {
       console.error('Failed to verify provider:', err);
@@ -120,9 +119,9 @@ export default function AdminDashboard() {
           API.get('/providers/admin/all').catch(() => ({ data: [] })),
         ]);
 
-        const rawBookings = bookingsRes.data || [];
-        const rawUsers = usersRes.data || [];
-        const rawProviders = providersRes.data || [];
+        const rawBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
+        const rawUsers = Array.isArray(usersRes.data) ? usersRes.data : [];
+        const rawProviders = Array.isArray(providersRes.data) ? providersRes.data : [];
 
         const totalRevenue = rawBookings.reduce((sum, b) => sum + (Number(b.price) || 0), 0);
 
@@ -133,11 +132,12 @@ export default function AdminDashboard() {
           revenue: totalRevenue,
         });
 
-        // Live Bookings
+        // Map live bookings safely
         const formattedBookings = rawBookings.map((b) => {
-          const d = b.bookingDate ? new Date(b.bookingDate) : new Date(b.createdAt);
+          const rawId = String(b._id || '000000');
+          const d = b.bookingDate ? new Date(b.bookingDate) : new Date(b.createdAt || Date.now());
           return {
-            id: b._id.substring(b._id.length - 6).toUpperCase(),
+            id: rawId.length >= 6 ? rawId.substring(rawId.length - 6).toUpperCase() : rawId,
             fullId: b._id,
             user: b.customerId?.name || 'Customer',
             provider: b.providerId?.name || 'Provider',
@@ -149,7 +149,7 @@ export default function AdminDashboard() {
         });
         setBookingsList(formattedBookings);
 
-        // Live Users
+        // Map registered users safely
         const formattedUsers = rawUsers.map((u) => {
           const d = u.createdAt ? new Date(u.createdAt) : new Date();
           const count = rawBookings.filter((b) => 
@@ -168,10 +168,9 @@ export default function AdminDashboard() {
         });
         setUsersList(formattedUsers);
 
-        // Live Providers
+        // Map providers
         const formattedProviders = rawProviders.map(transformProvider);
         setProvidersList(formattedProviders);
-
       } catch (err) {
         console.error('Failed to load admin data:', err);
       } finally {
@@ -196,7 +195,7 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
         <h3 className="font-bold text-text-primary mb-4">Booking Trends</h3>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={adminStats.monthlyData}>
+          <AreaChart data={adminStats?.monthlyData || []}>
             <defs>
               <linearGradient id="colorBookings" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15}/>
@@ -214,7 +213,7 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
         <h3 className="font-bold text-text-primary mb-4">Revenue (₹)</h3>
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={adminStats.monthlyData}>
+          <BarChart data={adminStats?.monthlyData || []}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94A3B8' }} />
             <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} />
@@ -431,8 +430,8 @@ export default function AdminDashboard() {
                   {/* Left: Documents */}
                   <div>
                     <p className="text-xs font-bold text-text-primary mb-2">📄 Submitted Documents</p>
-                    {renderDoc(p.aadhaarImage, 'Aadhaar / ID Proof')}
-                    {p.certificates.length > 0 ? (
+                    {renderDoc(p.aadhaarImage, 'Identity / Verification Proof')}
+                    {p.certificates && p.certificates.length > 0 ? (
                       p.certificates.map((cert, idx) => renderDoc(cert, `Certificate ${idx + 1}`))
                     ) : (
                       <p className="text-xs text-text-muted mt-1">No certificates uploaded.</p>
@@ -477,10 +476,8 @@ export default function AdminDashboard() {
     </div>
   );
 
-
   return (
     <div className="space-y-8">
-
       {/* ===== FULL-SCREEN IMAGE LIGHTBOX ===== */}
       {lightboxSrc && (
         <div
@@ -513,11 +510,10 @@ export default function AdminDashboard() {
           {currentPath === '/admin' && 'Dashboard Overview'}
         </h1>
         <p className="text-text-secondary mt-1">
-          {loading ? 'Fetching records from MongoDB...' : "Manage and track platform activities in real-time."}
+          {loading ? 'Fetching records from MongoDB...' : 'Manage and track platform activities in real-time.'}
         </p>
       </div>
 
-      {/* Conditionally Render Based on Sidebar Path */}
       {currentPath === '/admin' && (
         <>
           {renderStatsCards()}
@@ -599,8 +595,8 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface">
                 <div>
-                  <p className="text-sm font-semibold text-text-primary">Database</p>
-                  <p className="text-xs font-mono text-text-muted mt-0.5">mongodb://127.0.0.1:27017/local_service</p>
+                  <p className="text-sm font-semibold text-text-primary">Database Cluster</p>
+                  <p className="text-xs font-mono text-text-muted mt-0.5">MongoDB Atlas (Production Cloud)</p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600">
                   Connected
@@ -610,7 +606,7 @@ export default function AdminDashboard() {
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface">
                 <div>
                   <p className="text-sm font-semibold text-text-primary">REST API Gateway</p>
-                  <p className="text-xs font-mono text-text-muted mt-0.5">http://localhost:5000/api</p>
+                  <p className="text-xs font-mono text-text-muted mt-0.5">https://household-service-provider.onrender.com/api</p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600">
                   Online
