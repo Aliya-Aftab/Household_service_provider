@@ -1,6 +1,34 @@
 import mongoose from "mongoose";
 import ServiceProviderProfile from "../models/ServiceProvider.js";
 
+// Helper to resolve a clean city name from provider profile
+const ensureCityName = (providerObj) => {
+  if (
+    providerObj.locationName &&
+    !providerObj.locationName.startsWith("GPS:") &&
+    providerObj.locationName !== "undefined" &&
+    providerObj.locationName !== "Live Location Pending"
+  ) {
+    return providerObj.locationName;
+  }
+  return "Verified Location";
+};
+
+// Haversine formula to calculate distance between two coordinates in kilometers
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth's radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10; // Round to 1 decimal place
+};
+
 /* CREATE PROVIDER PROFILE */
 export const createProviderProfile = async (req, res) => {
   try {
@@ -40,21 +68,35 @@ export const getProviderById = async (req, res) => {
       return res.status(404).json({ message: "Provider not found" });
     }
 
-    return res.json(provider);
+    const pObj = provider.toObject();
+    pObj.locationName = ensureCityName(pObj);
+
+    return res.json(pObj);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-/* GET ALL VERIFIED PROVIDERS (public - sorted by Bayesian ranking) */
+/* GET ALL VERIFIED PROVIDERS (public - sorted by Bayesian score with optional distance) */
 export const getAllProviders = async (req, res) => {
   try {
+    const { lng, lat } = req.query;
     const providers = await ServiceProviderProfile.find({ isVerified: true })
       .populate("userId", "-password")
       .populate("servicesOffered")
       .sort({ bayesianScore: -1, avgRating: -1 });
 
-    return res.json(providers);
+    const results = providers.map((p) => {
+      const pObj = p.toObject();
+      pObj.locationName = ensureCityName(pObj);
+      const coords = p.location?.coordinates;
+      if (lng && lat && Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        pObj.distanceKm = haversineDistanceKm(parseFloat(lat), parseFloat(lng), coords[1], coords[0]);
+      }
+      return pObj;
+    });
+
+    return res.json(results);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -68,51 +110,99 @@ export const getAllProvidersAdmin = async (req, res) => {
       .populate("servicesOffered")
       .sort({ createdAt: -1 });
 
-    return res.json(providers);
+    const results = providers.map((p) => {
+      const pObj = p.toObject();
+      pObj.locationName = ensureCityName(pObj);
+      return pObj;
+    });
+
+    return res.json(results);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 };
 
-/* GET NEARBY PROVIDERS */
+/* GET NEARBY PROVIDERS (filtered by km distance limit and service keyword) */
 export const getNearbyProviders = async (req, res) => {
   try {
-    const { lng, lat, categoryId } = req.query;
+    const { lng, lat, categoryId, service, maxKm } = req.query;
 
     if (!lng || !lat) {
-      // If coordinates not passed, return default active providers
       const all = await ServiceProviderProfile.find({ isVerified: true })
         .populate("userId", "-password")
-        .populate("servicesOffered");
-      return res.json(all);
+        .populate("servicesOffered")
+        .sort({ bayesianScore: -1, avgRating: -1 });
+
+      const formatted = all.map((p) => {
+        const pObj = p.toObject();
+        pObj.locationName = ensureCityName(pObj);
+        return pObj;
+      });
+
+      return res.json(formatted);
     }
 
-    const query = {
-      isVerified: true,
-      location: {
-        $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)],
-          },
-          $maxDistance: 15000, // 15 km
-        },
-      },
-    };
+    const userLng = parseFloat(lng);
+    const userLat = parseFloat(lat);
+    const limitKm = maxKm ? parseFloat(maxKm) : 25; // Default system limit: 25 km
 
-    if (categoryId && mongoose.Types.ObjectId.isValid(categoryId)) {
-      query.servicesOffered = categoryId;
+    // Fetch verified providers with populated users and categories
+    const providers = await ServiceProviderProfile.find({ isVerified: true })
+      .populate("userId", "-password")
+      .populate("servicesOffered");
+
+    const results = [];
+
+    for (const p of providers) {
+      const coords = p.location?.coordinates;
+      let dist = null;
+
+      if (Array.isArray(coords) && coords.length === 2 && !isNaN(coords[0]) && !isNaN(coords[1])) {
+        const [pLng, pLat] = coords;
+        dist = haversineDistanceKm(userLat, userLng, pLat, pLng);
+      }
+
+      // Include provider if within distance limit
+      if (dist !== null && dist <= limitKm) {
+        const pObj = p.toObject();
+        pObj.locationName = ensureCityName(pObj);
+        pObj.distanceKm = dist;
+        results.push(pObj);
+      }
     }
 
-    let providers;
-    try {
-      providers = await ServiceProviderProfile.find(query).populate("userId", "-password");
-    } catch (geoErr) {
-      // Fallback if 2dsphere index is absent on the collection
-      providers = await ServiceProviderProfile.find({ isVerified: true }).populate("userId", "-password");
+    // Filter by category if specified
+    let filtered = results;
+    if (categoryId && categoryId !== "All") {
+      filtered = filtered.filter((p) =>
+        p.servicesOffered?.some(
+          (s) =>
+            s._id?.toString() === categoryId ||
+            s.toString() === categoryId ||
+            s.name?.toLowerCase() === categoryId.toLowerCase()
+        )
+      );
     }
 
-    return res.json(providers);
+    // Filter by service keyword
+    if (service && service.trim()) {
+      const q = service.toLowerCase().trim();
+      filtered = filtered.filter((p) => {
+        const catMatch = p.servicesOffered?.some(
+          (s) =>
+            (s.name && s.name.toLowerCase().includes(q)) ||
+            (s.description && s.description.toLowerCase().includes(q))
+        );
+        const skillMatch = p.skills?.some((sk) => sk.toLowerCase().includes(q));
+        const nameMatch = p.userId?.name?.toLowerCase().includes(q);
+        return catMatch || skillMatch || nameMatch;
+      });
+    }
+
+    // Sort by nearest distance first
+    filtered.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+
+    return res.json(filtered);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -201,9 +291,9 @@ export const telephonicVerifyProvider = async (req, res) => {
     provider.telephonicVerified = true;
     await provider.save();
 
-    res.json({ message: "Provider telephonic verification successful", provider });
+    return res.json({ message: "Provider telephonic verification successful", provider });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 

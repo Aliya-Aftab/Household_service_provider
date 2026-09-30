@@ -40,11 +40,18 @@ export default function Landing() {
     loadFeatured();
   }, []);
 
-  // When user clicks Search on SearchBar:
-  const handleSearch = ({ service, location }) => {
+  // When user clicks Search on SearchBar
+  const handleSearch = ({ service, location, coords }) => {
     const params = new URLSearchParams();
-    if (service && service.trim()) params.set('search', service.trim());
-    if (location && location.trim()) params.set('location', location.trim());
+    const term = (service || '').trim();
+    const loc = (location || '').trim();
+
+    if (term) params.set('search', term);
+    if (loc) params.set('location', loc);
+    if (coords?.lat && coords?.lng) {
+      params.set('lat', coords.lat);
+      params.set('lng', coords.lng);
+    }
 
     navigate(`/services?${params.toString()}`);
   };
@@ -69,7 +76,7 @@ export default function Landing() {
               </span>
             </h1>
             <p className="mt-5 text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
-              Book verified professionals for home services. From electricians to beauticians — quality service at your doorstep.
+              Book verified professionals for home services within your area. From electricians to beauticians — quality service at your doorstep.
             </p>
 
             {/* Search Bar WIRED WITH onSearch */}
@@ -80,7 +87,7 @@ export default function Landing() {
             {/* Popular Pills */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-text-muted">
               <span>Popular:</span>
-              {['Electrician', 'Plumber', 'AC Repair', 'Cleaner'].map((s) => (
+              {['Electrician', 'Plumber', 'AC Repair', 'Cleaner', 'Carpenter'].map((s) => (
                 <Link
                   key={s}
                   to={`/services?search=${encodeURIComponent(s)}`}

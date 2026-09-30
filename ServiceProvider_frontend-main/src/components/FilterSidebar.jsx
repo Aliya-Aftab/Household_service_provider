@@ -35,7 +35,7 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
   ];
 
   const ratings = [4.5, 4.0, 3.5, 3.0];
-  const distances = ['< 2 km', '< 5 km', '< 10 km', 'Any'];
+  const distances = ['< 2 km', '< 5 km', '< 10 km', '< 15 km', '< 25 km', 'Any'];
 
   return (
     <>
