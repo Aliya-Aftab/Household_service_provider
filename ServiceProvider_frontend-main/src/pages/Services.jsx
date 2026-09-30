@@ -12,7 +12,7 @@ export default function Services() {
 
   // Read initial values from URL query parameters
   const initialCategory = searchParams.get('category') || 'All';
-  const initialService = searchParams.get('service') || '';
+  const initialService = searchParams.get('search') || searchParams.get('service') || '';
   const initialLoc = searchParams.get('location') || '';
   const initialLat = searchParams.get('lat');
   const initialLng = searchParams.get('lng');
@@ -43,24 +43,22 @@ export default function Services() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState('recommended');
 
-  // Sync category state when URL search param changes
+  // Synchronize state whenever URL search params change
   useEffect(() => {
     const cat = searchParams.get('category') || 'All';
-    const serv = searchParams.get('service');
-    const loc = searchParams.get('location');
+    const term = searchParams.get('search') || searchParams.get('service') || '';
+    const loc = searchParams.get('location') || '';
     const lat = searchParams.get('lat');
     const lng = searchParams.get('lng');
     const km = searchParams.get('maxKm');
 
     setFilters((prev) => ({ ...prev, category: cat }));
 
-    if (serv !== null || loc !== null || (lat && lng)) {
-      setSearchQuery((prev) => ({
-        service: serv !== null ? serv : prev.service,
-        location: loc !== null ? loc : prev.location,
-        coords: lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : prev.coords,
-      }));
-    }
+    setSearchQuery((prev) => ({
+      service: term,
+      location: loc,
+      coords: lat && lng ? { lat: parseFloat(lat), lng: parseFloat(lng) } : prev.coords,
+    }));
 
     if (km) {
       setMaxDistanceKm(Number(km));
@@ -78,7 +76,8 @@ export default function Services() {
         }`;
       }
       const res = await API.get(endpoint);
-      let formatted = res.data.map(transformProvider);
+      const list = Array.isArray(res.data) ? res.data : [];
+      let formatted = list.map(transformProvider);
 
       // Ensure every provider has distanceKm calculated if user coordinates exist
       if (coords && coords.lat && coords.lng) {
@@ -103,6 +102,7 @@ export default function Services() {
       setRawProviders(formatted);
     } catch (err) {
       console.error('Failed to load providers from backend:', err);
+      setRawProviders([]);
     } finally {
       setLoading(false);
     }
@@ -114,35 +114,38 @@ export default function Services() {
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
-    if (newFilters.category !== 'All') {
-      setSearchParams((prev) => {
-        prev.set('category', newFilters.category);
-        return prev;
-      });
+    const params = new URLSearchParams(searchParams);
+
+    if (newFilters.category && newFilters.category !== 'All') {
+      params.set('category', newFilters.category);
     } else {
-      setSearchParams((prev) => {
-        prev.delete('category');
-        return prev;
-      });
+      params.delete('category');
     }
+    setSearchParams(params);
   };
 
   const handleSearch = ({ service, location, coords }) => {
-    setSearchQuery({ service, location, coords });
-    setSearchParams((prev) => {
-      if (service) prev.set('service', service);
-      else prev.delete('service');
-      if (location) prev.set('location', location);
-      else prev.delete('location');
-      if (coords?.lat && coords?.lng) {
-        prev.set('lat', coords.lat);
-        prev.set('lng', coords.lng);
-      } else {
-        prev.delete('lat');
-        prev.delete('lng');
-      }
-      return prev;
-    });
+    const term = (service || '').trim();
+    const loc = (location || '').trim();
+
+    setSearchQuery({ service: term, location: loc, coords: coords || null });
+
+    const params = new URLSearchParams(searchParams);
+    if (term) params.set('search', term);
+    else params.delete('search');
+
+    if (loc) params.set('location', loc);
+    else params.delete('location');
+
+    if (coords?.lat && coords?.lng) {
+      params.set('lat', coords.lat);
+      params.set('lng', coords.lng);
+    } else {
+      params.delete('lat');
+      params.delete('lng');
+    }
+
+    setSearchParams(params);
   };
 
   const handleResetFilters = () => {
@@ -179,7 +182,8 @@ export default function Services() {
               addr.city_district ||
               addr.city ||
               addr.town ||
-              data.display_name.split(',')[0];
+              data.display_name?.split(',')[0] ||
+              'Current Area';
             locName = `${shortName} (GPS)`;
           }
         } catch (e) {
@@ -215,7 +219,7 @@ export default function Services() {
       });
     }
 
-    // Also support FilterSidebar distance option if explicitly clicked
+    // Support FilterSidebar distance option if explicitly clicked
     if (filters.distance && filters.distance !== 'Any') {
       const maxFilterKm = parseFloat(filters.distance.replace(/[^\d.]/g, ''));
       if (!isNaN(maxFilterKm)) {
@@ -228,15 +232,21 @@ export default function Services() {
       }
     }
 
-    // Search input keyword filtering (Service / Name / Skills)
+    // Search input keyword filtering (Service / Name / Category / Skills)
     if (searchQuery.service.trim()) {
       const q = searchQuery.service.toLowerCase().trim();
-      result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          p.services?.some((s) => s.name.toLowerCase().includes(q))
-      );
+      result = result.filter((p) => {
+        const pName = (p.name || '').toLowerCase();
+        const pCat = (p.category || '').toLowerCase();
+        const matchesServices = Array.isArray(p.services)
+          ? p.services.some((s) => (s?.name || '').toLowerCase().includes(q))
+          : false;
+        const matchesSkills = Array.isArray(p.skills)
+          ? p.skills.some((s) => (s || '').toLowerCase().includes(q))
+          : false;
+
+        return pName.includes(q) || pCat.includes(q) || matchesServices || matchesSkills;
+      });
     }
 
     // Smart tokenized location filtering (only if not using GPS coordinates)
@@ -260,13 +270,15 @@ export default function Services() {
     }
 
     // Category sidebar filter
-    if (filters.category !== 'All') {
-      result = result.filter((p) => p.category.toLowerCase() === filters.category.toLowerCase());
+    if (filters.category && filters.category !== 'All') {
+      result = result.filter(
+        (p) => (p.category || '').toLowerCase() === filters.category.toLowerCase()
+      );
     }
 
     // Rating filter
     if (filters.minRating) {
-      result = result.filter((p) => p.rating >= filters.minRating);
+      result = result.filter((p) => (p.rating || 0) >= filters.minRating);
     }
 
     // Price range filter
@@ -278,7 +290,7 @@ export default function Services() {
         'Above ₹1000': [1000, Infinity],
       };
       const [min, max] = ranges[filters.priceRange] || [0, Infinity];
-      result = result.filter((p) => p.price >= min && p.price <= max);
+      result = result.filter((p) => (p.price || 0) >= min && (p.price || 0) <= max);
     }
 
     // Sort order
@@ -287,13 +299,13 @@ export default function Services() {
         result.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
         break;
       case 'rating':
-        result.sort((a, b) => b.rating - a.rating);
+        result.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case 'price-low':
-        result.sort((a, b) => a.price - b.price);
+        result.sort((a, b) => (a.price || 0) - (b.price || 0));
         break;
       case 'price-high':
-        result.sort((a, b) => b.price - a.price);
+        result.sort((a, b) => (b.price || 0) - (a.price || 0));
         break;
       case 'recommended':
       default:
@@ -412,10 +424,8 @@ export default function Services() {
             </span>
           )}
           <button
-            onClick={() => {
-              setSearchQuery({ service: '', location: '', coords: null });
-              setSearchParams({});
-            }}
+            type="button"
+            onClick={handleResetFilters}
             className="text-xs text-red-500 hover:underline ml-1 cursor-pointer font-medium"
           >
             Clear Search
@@ -426,6 +436,7 @@ export default function Services() {
       {/* Mobile Filter Button + Sort */}
       <div className="flex items-center gap-3 mb-6">
         <button
+          type="button"
           onClick={() => setFilterOpen(true)}
           className="lg:hidden flex items-center gap-2 px-4 py-2.5 bg-white border border-border rounded-xl text-sm font-medium text-text-primary hover:bg-gray-50 transition-colors cursor-pointer"
           aria-label="Open filters"
@@ -465,7 +476,7 @@ export default function Services() {
           ) : filtered.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {filtered.map((provider) => (
-                <ServiceCard key={provider.id} provider={provider} />
+                <ServiceCard key={provider.id || provider._id} provider={provider} />
               ))}
             </div>
           ) : (
@@ -478,7 +489,7 @@ export default function Services() {
               </p>
               <p className="text-text-secondary mt-1 max-w-md mx-auto text-sm">
                 {searchQuery.coords
-                  ? `Try expanding your distance limit to 25 km or 50 km to find professionals in surrounding neighborhoods.`
+                  ? 'Try expanding your distance limit to 25 km or 50 km to find professionals in surrounding neighborhoods.'
                   : 'Try adjusting your search query, service category, or filters.'}
               </p>
               <div className="mt-5 flex items-center justify-center gap-3">

@@ -1,45 +1,5 @@
+import mongoose from "mongoose";
 import ServiceProviderProfile from "../models/ServiceProvider.js";
-
-/* CREATE PROVIDER PROFILE */
-export const createProviderProfile = async (req, res) => {
-  try {
-    const profile = await ServiceProviderProfile.create(req.body);
-    res.status(201).json(profile);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
-
-/* GET PROVIDER PROFILE BY ID OR USER ID */
-export const getProviderById = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // Search by ServiceProviderProfile _id first, fallback to matching userId
-    let provider = await ServiceProviderProfile
-      .findById(id)
-      .populate("userId")
-      .populate("servicesOffered");
-
-    if (!provider) {
-      provider = await ServiceProviderProfile
-        .findOne({ userId: id })
-        .populate("userId")
-        .populate("servicesOffered");
-    }
-
-    if (!provider) {
-      return res.status(404).json({ message: "Provider not found" });
-    }
-
-    const pObj = provider.toObject();
-    pObj.locationName = ensureCityName(pObj);
-
-    res.json(pObj);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-};
 
 // Helper to resolve a clean city name from provider profile
 const ensureCityName = (providerObj) => {
@@ -69,14 +29,62 @@ const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
   return Math.round(R * c * 10) / 10; // Round to 1 decimal place
 };
 
-/* GET ALL VERIFIED PROVIDERS (public - only show verified, with optional distance calculation) */
+/* CREATE PROVIDER PROFILE */
+export const createProviderProfile = async (req, res) => {
+  try {
+    const profile = await ServiceProviderProfile.create(req.body);
+    return res.status(201).json(profile);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/* GET PROVIDER PROFILE BY ID OR USER ID */
+export const getProviderById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || id === "undefined" || id === "null") {
+      return res.status(400).json({ message: "Invalid provider ID provided." });
+    }
+
+    const isHexId = mongoose.Types.ObjectId.isValid(id);
+    let provider = null;
+
+    if (isHexId) {
+      provider = await ServiceProviderProfile.findById(id)
+        .populate("userId", "-password")
+        .populate("servicesOffered");
+    }
+
+    // Fallback: search by userId reference
+    if (!provider && isHexId) {
+      provider = await ServiceProviderProfile.findOne({ userId: id })
+        .populate("userId", "-password")
+        .populate("servicesOffered");
+    }
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found" });
+    }
+
+    const pObj = provider.toObject();
+    pObj.locationName = ensureCityName(pObj);
+
+    return res.json(pObj);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/* GET ALL VERIFIED PROVIDERS (public - sorted by Bayesian score with optional distance) */
 export const getAllProviders = async (req, res) => {
   try {
     const { lng, lat } = req.query;
-    const providers = await ServiceProviderProfile
-      .find({ isVerified: true })
+    const providers = await ServiceProviderProfile.find({ isVerified: true })
       .populate("userId", "-password")
-      .populate("servicesOffered");
+      .populate("servicesOffered")
+      .sort({ bayesianScore: -1, avgRating: -1 });
 
     const results = providers.map((p) => {
       const pObj = p.toObject();
@@ -88,19 +96,19 @@ export const getAllProviders = async (req, res) => {
       return pObj;
     });
 
-    res.json(results);
+    return res.json(results);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
 /* GET ALL PROVIDERS FOR ADMIN (includes unverified/pending) */
 export const getAllProvidersAdmin = async (req, res) => {
   try {
-    const providers = await ServiceProviderProfile
-      .find()
-      .populate("userId")
-      .populate("servicesOffered");
+    const providers = await ServiceProviderProfile.find()
+      .populate("userId", "-password")
+      .populate("servicesOffered")
+      .sort({ createdAt: -1 });
 
     const results = providers.map((p) => {
       const pObj = p.toObject();
@@ -108,9 +116,9 @@ export const getAllProvidersAdmin = async (req, res) => {
       return pObj;
     });
 
-    res.json(results);
+    return res.json(results);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -120,14 +128,25 @@ export const getNearbyProviders = async (req, res) => {
     const { lng, lat, categoryId, service, maxKm } = req.query;
 
     if (!lng || !lat) {
-      return res.status(400).json({ message: "Latitude and longitude are required" });
+      const all = await ServiceProviderProfile.find({ isVerified: true })
+        .populate("userId", "-password")
+        .populate("servicesOffered")
+        .sort({ bayesianScore: -1, avgRating: -1 });
+
+      const formatted = all.map((p) => {
+        const pObj = p.toObject();
+        pObj.locationName = ensureCityName(pObj);
+        return pObj;
+      });
+
+      return res.json(formatted);
     }
 
     const userLng = parseFloat(lng);
     const userLat = parseFloat(lat);
     const limitKm = maxKm ? parseFloat(maxKm) : 25; // Default system limit: 25 km
 
-    // Fetch only verified providers with populated user and categories
+    // Fetch verified providers with populated users and categories
     const providers = await ServiceProviderProfile.find({ isVerified: true })
       .populate("userId", "-password")
       .populate("servicesOffered");
@@ -143,7 +162,7 @@ export const getNearbyProviders = async (req, res) => {
         dist = haversineDistanceKm(userLat, userLng, pLat, pLng);
       }
 
-      // Include provider if within distance limit (or if no coordinates, keep dist as null)
+      // Include provider if within distance limit
       if (dist !== null && dist <= limitKm) {
         const pObj = p.toObject();
         pObj.locationName = ensureCityName(pObj);
@@ -165,7 +184,7 @@ export const getNearbyProviders = async (req, res) => {
       );
     }
 
-    // Filter by typed service keyword if specified (e.g. "carpenter", "plumber", "cleaner")
+    // Filter by service keyword
     if (service && service.trim()) {
       const q = service.toLowerCase().trim();
       filtered = filtered.filter((p) => {
@@ -183,17 +202,22 @@ export const getNearbyProviders = async (req, res) => {
     // Sort by nearest distance first
     filtered.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
 
-    res.json(filtered);
+    return res.json(filtered);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
 /* UPDATE PROVIDER PROFILE */
 export const updateProviderProfile = async (req, res) => {
   try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid ID format." });
+    }
+
     const updated = await ServiceProviderProfile.findByIdAndUpdate(
-      req.params.id,
+      id,
       req.body,
       { new: true }
     );
@@ -202,31 +226,44 @@ export const updateProviderProfile = async (req, res) => {
       return res.status(404).json({ message: "Provider not found" });
     }
 
-    res.json(updated);
+    return res.json(updated);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
 /* DELETE PROVIDER PROFILE */
 export const deleteProviderProfile = async (req, res) => {
   try {
-    const deleted = await ServiceProviderProfile.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid ID format." });
+    }
+
+    const deleted = await ServiceProviderProfile.findByIdAndDelete(id);
 
     if (!deleted) {
       return res.status(404).json({ message: "Provider not found" });
     }
 
-    res.json({ message: "Provider deleted successfully" });
+    return res.json({ message: "Provider deleted successfully" });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
 /* VERIFY PROVIDER PROFILE (ADMIN ONLY) */
 export const verifyProvider = async (req, res) => {
   try {
-    const provider = await ServiceProviderProfile.findById(req.params.id);
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid ID format." });
+    }
+
+    let provider = await ServiceProviderProfile.findById(id);
+    if (!provider) {
+      provider = await ServiceProviderProfile.findOne({ userId: id });
+    }
 
     if (!provider) {
       return res.status(404).json({ message: "Provider not found" });
@@ -236,10 +273,9 @@ export const verifyProvider = async (req, res) => {
     provider.verifiedByAdmin = true;
 
     await provider.save();
-
-    res.json({ message: "Provider verified successfully", provider });
+    return res.json({ message: "Provider verified successfully", provider });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -255,38 +291,55 @@ export const telephonicVerifyProvider = async (req, res) => {
     provider.telephonicVerified = true;
     await provider.save();
 
-    res.json({ message: "Provider telephonic verification successful", provider });
+    return res.json({ message: "Provider telephonic verification successful", provider });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
 /* UPDATE PROVIDER RATING (WITH BAYESIAN RANKING) */
 export const updateProviderRating = async (req, res) => {
   try {
-    const { rating } = req.body;
-    const provider = await ServiceProviderProfile.findById(req.params.id);
+    const numericRating = Number(req.body.rating);
+    if (isNaN(numericRating) || numericRating < 1 || numericRating > 5) {
+      return res.status(400).json({ message: "Rating must be a number between 1 and 5" });
+    }
+
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid ID format." });
+    }
+
+    let provider = await ServiceProviderProfile.findById(id);
+    if (!provider) {
+      provider = await ServiceProviderProfile.findOne({ userId: id });
+    }
 
     if (!provider) {
       return res.status(404).json({ message: "Provider not found" });
     }
 
-    // 1. Calculate standard average
-    const currentTotalScore = provider.avgRating * provider.totalRatings;
-    provider.totalRatings += 1;
-    provider.avgRating = (currentTotalScore + rating) / provider.totalRatings;
+    const prevCount = provider.totalRatings || 0;
+    const prevAvg = provider.avgRating || 0;
 
-    // 2. Apply Bayesian Weighted Ranking
-    const v = provider.totalRatings;
-    const m = 10; 
+    const newTotal = prevCount + 1;
+    const newAvg = ((prevAvg * prevCount) + numericRating) / newTotal;
+
+    provider.totalRatings = newTotal;
+    provider.avgRating = Number(newAvg.toFixed(2));
+
+    // Bayesian Weighted Ranking: m = 5, C = 3.5
+    const v = newTotal;
+    const m = 5;
     const R = provider.avgRating;
-    const C = 3.5; 
+    const C = 3.5;
 
-    provider.bayesianScore = ((v / (v + m)) * R) + ((m / (v + m)) * C);
+    provider.bayesianScore = Number((((v / (v + m)) * R) + ((m / (v + m)) * C)).toFixed(2));
+    provider.isRecommended = provider.bayesianScore >= 4.0;
 
     await provider.save();
-    res.json(provider);
+    return res.json(provider);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };

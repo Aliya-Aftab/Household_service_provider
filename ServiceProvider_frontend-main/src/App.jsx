@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import MainLayout from './layouts/MainLayout';
 import AdminLayout from './layouts/AdminLayout';
@@ -48,6 +48,7 @@ export default function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/services" element={<Services />} />
           <Route path="/provider/:id" element={<ProviderProfile />} />
+          <Route path="/booking/:providerId" element={<Booking />} />
           <Route path="/booking" element={<Booking />} />
         </Route>
 
@@ -62,7 +63,10 @@ export default function App() {
             <Route path="settings" element={<AdminDashboard />} />
           </Route>
         </Route>
+
+        {/* Fallback wildcard */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
-}
+}

@@ -18,7 +18,11 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSearch?.({ service: service.trim(), location: location.trim(), coords });
+    onSearch?.({
+      service: service.trim(),
+      location: location.trim(),
+      coords,
+    });
   };
 
   const handleGetLocation = () => {
@@ -35,6 +39,7 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
         setCoords(newCoords);
 
         let locName = 'Current Location';
+
         try {
           // Reverse geocode to get a readable address name
           const res = await fetch(
@@ -50,8 +55,11 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
               addr.city_district ||
               addr.city ||
               addr.town ||
-              data.display_name.split(',')[0];
+              data.display_name?.split(',')[0] ||
+              'Current Area';
             locName = `${shortName} (GPS)`;
+          } else if (data && data.display_name) {
+            locName = `${data.display_name.split(',')[0]} (Current Location)`;
           }
         } catch (err) {
           console.error('Reverse geocoding failed:', err);
@@ -60,7 +68,7 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
         setLocation(locName);
         setIsLocating(false);
 
-        // Optionally trigger immediate search with new coords if service is already typed
+        // Trigger immediate search with new coords if service is already typed
         if (service.trim()) {
           onSearch?.({ service: service.trim(), location: locName, coords: newCoords });
         }
@@ -98,7 +106,7 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
           value={location}
           onChange={(e) => {
             setLocation(e.target.value);
-            // If user types custom text, clear the GPS coords unless they re-locate
+            // Clear GPS coordinates if user types a custom text query
             if (coords) setCoords(null);
           }}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
