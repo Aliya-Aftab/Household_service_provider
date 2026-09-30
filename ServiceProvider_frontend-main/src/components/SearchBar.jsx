@@ -4,10 +4,64 @@ import { HiSearch, HiLocationMarker } from 'react-icons/hi';
 export default function SearchBar({ onSearch, className = '' }) {
   const [service, setService] = useState('');
   const [location, setLocation] = useState('');
+  const [coords, setCoords] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSearch?.({ service: service.trim(), location: location.trim() });
+    onSearch?.({ 
+      service: service.trim(), 
+      location: location.trim(), 
+      coords 
+    });
+  };
+
+  const handleGetLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        setCoords({ lat: latitude, lng: longitude });
+
+        try {
+          // Reverse geocode to get a readable address name
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+          );
+          const data = await res.json();
+
+          if (data && data.display_name) {
+            // Extract a shorter version of the address if possible (suburb, city, etc.)
+            const address = data.address;
+            const shortName =
+              address.suburb ||
+              address.neighbourhood ||
+              address.city_district ||
+              address.city ||
+              address.town ||
+              data.display_name.split(',')[0];
+            setLocation(`${shortName} (Current Location)`);
+          } else {
+            setLocation('Current Location');
+          }
+        } catch (err) {
+          console.error('Reverse geocoding failed:', err);
+          setLocation('Current Location');
+        }
+
+        setIsLocating(false);
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        alert('Unable to retrieve your location');
+        setIsLocating(false);
+      }
+    );
   };
 
   return (
@@ -32,10 +86,24 @@ export default function SearchBar({ onSearch, className = '' }) {
           type="text"
           placeholder="Your location or area"
           value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          onChange={(e) => {
+            setLocation(e.target.value);
+            if (e.target.value !== 'Current Location') {
+              setCoords(null);
+            }
+          }}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
           aria-label="Search location"
         />
+        <button
+          type="button"
+          onClick={handleGetLocation}
+          disabled={isLocating}
+          className="text-primary hover:text-primary-dark p-1 text-xs font-medium cursor-pointer"
+          title="Get live location"
+        >
+          {isLocating ? 'Locating...' : 'Locate Me'}
+        </button>
       </div>
       <button
         type="submit"

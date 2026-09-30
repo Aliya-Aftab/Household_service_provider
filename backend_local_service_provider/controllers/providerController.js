@@ -46,13 +46,27 @@ export const getProviderById = async (req, res) => {
   }
 };
 
-/* GET ALL PROVIDERS */
+/* GET ALL VERIFIED PROVIDERS (public - sorted by Bayesian ranking) */
 export const getAllProviders = async (req, res) => {
+  try {
+    const providers = await ServiceProviderProfile.find({ isVerified: true })
+      .populate("userId", "-password")
+      .populate("servicesOffered")
+      .sort({ bayesianScore: -1, avgRating: -1 });
+
+    return res.json(providers);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
+
+/* GET ALL PROVIDERS FOR ADMIN (includes unverified/pending) */
+export const getAllProvidersAdmin = async (req, res) => {
   try {
     const providers = await ServiceProviderProfile.find()
       .populate("userId", "-password")
       .populate("servicesOffered")
-      .sort({ bayesianScore: -1, avgRating: -1 });
+      .sort({ createdAt: -1 });
 
     return res.json(providers);
   } catch (err) {
@@ -67,13 +81,14 @@ export const getNearbyProviders = async (req, res) => {
 
     if (!lng || !lat) {
       // If coordinates not passed, return default active providers
-      const all = await ServiceProviderProfile.find()
+      const all = await ServiceProviderProfile.find({ isVerified: true })
         .populate("userId", "-password")
         .populate("servicesOffered");
       return res.json(all);
     }
 
     const query = {
+      isVerified: true,
       location: {
         $near: {
           $geometry: {
@@ -94,7 +109,7 @@ export const getNearbyProviders = async (req, res) => {
       providers = await ServiceProviderProfile.find(query).populate("userId", "-password");
     } catch (geoErr) {
       // Fallback if 2dsphere index is absent on the collection
-      providers = await ServiceProviderProfile.find().populate("userId", "-password");
+      providers = await ServiceProviderProfile.find({ isVerified: true }).populate("userId", "-password");
     }
 
     return res.json(providers);
@@ -171,6 +186,24 @@ export const verifyProvider = async (req, res) => {
     return res.json({ message: "Provider verified successfully", provider });
   } catch (err) {
     return res.status(500).json({ error: err.message });
+  }
+};
+
+/* TELEPHONIC VERIFY PROVIDER PROFILE (ADMIN ONLY) */
+export const telephonicVerifyProvider = async (req, res) => {
+  try {
+    const provider = await ServiceProviderProfile.findById(req.params.id);
+
+    if (!provider) {
+      return res.status(404).json({ message: "Provider not found" });
+    }
+
+    provider.telephonicVerified = true;
+    await provider.save();
+
+    res.json({ message: "Provider telephonic verification successful", provider });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };
 

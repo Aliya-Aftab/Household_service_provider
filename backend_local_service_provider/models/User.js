@@ -16,6 +16,12 @@ const UserSchema = new mongoose.Schema({
 
   isActive: { type: Boolean, default: true },
 
+  location: {
+    type: { type: String, enum: ["Point"], default: "Point" },
+    coordinates: { type: [Number] } // [lng, lat]
+  },
+  locationName: { type: String },
+
   createdAt: { type: Date, default: Date.now }
 });
 

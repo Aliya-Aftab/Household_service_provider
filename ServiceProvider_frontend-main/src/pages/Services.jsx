@@ -12,10 +12,11 @@ export default function Services() {
   const [rawProviders, setRawProviders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Initialize search & location state directly from URL query parameters
+  // Initialize search & location state directly from URL query parameters + coords support
   const [searchQuery, setSearchQuery] = useState({
     service: searchParams.get('search') || searchParams.get('service') || '',
     location: searchParams.get('location') || '',
+    coords: null,
   });
 
   const [filters, setFilters] = useState({
@@ -34,27 +35,32 @@ export default function Services() {
     const loc = searchParams.get('location') || '';
 
     setFilters((prev) => ({ ...prev, category: cat }));
-    setSearchQuery({ service: term, location: loc });
+    setSearchQuery((prev) => ({ ...prev, service: term, location: loc }));
   }, [searchParams]);
 
-  // Fetch real data from MongoDB
-  useEffect(() => {
-    const fetchProviders = async () => {
-      try {
-        const res = await API.get('/providers');
-        const list = Array.isArray(res.data) ? res.data : [];
-        const formatted = list.map(transformProvider);
-        setRawProviders(formatted);
-      } catch (err) {
-        console.error('Failed to load providers from backend:', err);
-        setRawProviders([]);
-      } finally {
-        setLoading(false);
+  // Fetch real data from MongoDB (with support for nearby GPS query)
+  const fetchProviders = async (coords = null) => {
+    setLoading(true);
+    try {
+      let endpoint = '/providers';
+      if (coords && coords.lat && coords.lng) {
+        endpoint = `/providers/nearby?lng=${coords.lng}&lat=${coords.lat}`;
       }
-    };
+      const res = await API.get(endpoint);
+      const list = Array.isArray(res.data) ? res.data : [];
+      const formatted = list.map(transformProvider);
+      setRawProviders(formatted);
+    } catch (err) {
+      console.error('Failed to load providers from backend:', err);
+      setRawProviders([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchProviders();
-  }, []);
+  useEffect(() => {
+    fetchProviders(searchQuery.coords);
+  }, [searchQuery.coords]);
 
   const handleFilterChange = (newFilters) => {
     setFilters(newFilters);
@@ -68,11 +74,11 @@ export default function Services() {
     setSearchParams(params);
   };
 
-  const handleSearch = ({ service, location }) => {
+  const handleSearch = ({ service, location, coords }) => {
     const term = (service || '').trim();
     const loc = (location || '').trim();
 
-    setSearchQuery({ service: term, location: loc });
+    setSearchQuery({ service: term, location: loc, coords: coords || null });
 
     const params = new URLSearchParams(searchParams);
     if (term) params.set('search', term);
@@ -86,7 +92,7 @@ export default function Services() {
 
   const handleResetFilters = () => {
     setFilters({ category: 'All', priceRange: null, minRating: null, distance: null });
-    setSearchQuery({ service: '', location: '' });
+    setSearchQuery({ service: '', location: '', coords: null });
     setSearchParams({});
   };
 
@@ -110,8 +116,8 @@ export default function Services() {
       });
     }
 
-    // Smart tokenized location filtering
-    if (searchQuery.location.trim()) {
+    // Smart tokenized location filtering (only if not using GPS coordinates)
+    if (searchQuery.location.trim() && !searchQuery.coords && searchQuery.location !== 'Current Location') {
       const tokens = searchQuery.location
         .toLowerCase()
         .split(/[,\s]+/)
@@ -199,7 +205,7 @@ export default function Services() {
           )}
           <button
             type="button"
-            onClick={() => handleSearch({ service: '', location: '' })}
+            onClick={() => handleSearch({ service: '', location: '', coords: null })}
             className="text-xs text-red-500 hover:underline ml-1 cursor-pointer"
           >
             Clear Search
