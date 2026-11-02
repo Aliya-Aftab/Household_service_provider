@@ -41,11 +41,12 @@ export default function Navbar() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Base navigation links
+  // Base navigation links — role-aware
+  const dashPath = currentUser?.role === 'provider' ? '/provider-dashboard' : '/dashboard';
   const navLinks = [
     { path: '/', label: 'Home' },
     { path: '/services', label: 'Services' },
-    { path: '/dashboard', label: 'Dashboard' },
+    { path: dashPath, label: 'Dashboard' },
   ];
 
   // Show Admin link exclusively if logged in as an admin
@@ -74,11 +75,10 @@ export default function Navbar() {
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    location.pathname === link.path
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${location.pathname === link.path
                       ? 'bg-primary/10 text-primary'
                       : 'text-text-secondary hover:text-text-primary hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {link.label}
                 </Link>
@@ -98,7 +98,7 @@ export default function Navbar() {
                   </Link>
 
                   <Link
-                    to="/dashboard"
+                    to={dashPath}
                     className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-full bg-surface hover:bg-surface-dark transition-all duration-200 border border-border"
                   >
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
@@ -142,9 +142,8 @@ export default function Navbar() {
 
         {/* Mobile Menu */}
         <div
-          className={`md:hidden overflow-hidden transition-all duration-300 ${
-            mobileOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
-          }`}
+          className={`md:hidden overflow-hidden transition-all duration-300 ${mobileOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+            }`}
         >
           <div className="px-4 pb-4 pt-2 space-y-1 bg-white border-t border-border">
             {navLinks.map((link) => (
@@ -152,11 +151,10 @@ export default function Navbar() {
                 key={link.path}
                 to={link.path}
                 onClick={() => setMobileOpen(false)}
-                className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  location.pathname === link.path
+                className={`block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${location.pathname === link.path
                     ? 'bg-primary/10 text-primary'
                     : 'text-text-secondary hover:bg-gray-50'
-                }`}
+                  }`}
               >
                 {link.label}
               </Link>
@@ -166,7 +164,7 @@ export default function Navbar() {
               {currentUser ? (
                 <div className="flex items-center justify-between px-2 py-2">
                   <Link
-                    to="/dashboard"
+                    to={dashPath}
                     onClick={() => setMobileOpen(false)}
                     className="flex items-center gap-3"
                   >
