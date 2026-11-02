@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useEffect } from 'react';
 import MainLayout from './layouts/MainLayout';
 import AdminLayout from './layouts/AdminLayout';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
+import ProviderDashboard from './pages/ProviderDashboard';
 import Services from './pages/Services';
 import ProviderProfile from './pages/ProviderProfile';
 import Booking from './pages/Booking';
@@ -34,7 +35,7 @@ export default function App() {
             // Silent fail — location update is non-critical
           }
         },
-        () => {} // Silently ignore if denied
+        () => { } // Silently ignore if denied
       );
     }
   }, []);
@@ -46,9 +47,9 @@ export default function App() {
         <Route element={<MainLayout />}>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/provider-dashboard" element={<ProviderDashboard />} />
           <Route path="/services" element={<Services />} />
           <Route path="/provider/:id" element={<ProviderProfile />} />
-          <Route path="/booking/:providerId" element={<Booking />} />
           <Route path="/booking" element={<Booking />} />
         </Route>
 
@@ -63,9 +64,6 @@ export default function App() {
             <Route path="settings" element={<AdminDashboard />} />
           </Route>
         </Route>
-
-        {/* Fallback wildcard */}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

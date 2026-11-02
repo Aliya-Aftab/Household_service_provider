@@ -1,58 +1,32 @@
-import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import SearchBar from '../components/SearchBar';
 import CategoryCard from '../components/CategoryCard';
 import ServiceCard from '../components/ServiceCard';
-import API, { transformProvider } from '../utils/api';
 import { categories } from '../data/categories';
-import { providers as fallbackProviders } from '../data/providers';
+import API, { transformProvider } from '../utils/api';
 
 export default function Landing() {
   const navigate = useNavigate();
   const [featuredProviders, setFeaturedProviders] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  // Fetch real providers from MongoDB Atlas for "Featured Providers"
   useEffect(() => {
-    const loadFeatured = async () => {
-      try {
-        const res = await API.get('/providers');
-        const list = Array.isArray(res.data) ? res.data : [];
-        const formatted = list.map(transformProvider);
-        const recs = formatted.filter((p) => p.recommended);
-
-        // Use live recommended providers, or fallback to top-rated live providers
-        if (recs.length > 0) {
-          setFeaturedProviders(recs.slice(0, 3));
-        } else if (formatted.length > 0) {
-          setFeaturedProviders(formatted.slice(0, 3));
-        } else {
-          setFeaturedProviders(fallbackProviders.filter((p) => p.recommended).slice(0, 3));
-        }
-      } catch (err) {
-        console.warn('Using local fallback providers for landing page:', err.message);
-        setFeaturedProviders(fallbackProviders.filter((p) => p.recommended).slice(0, 3));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadFeatured();
+    API.get('/providers')
+      .then((res) => {
+        const transformed = (res.data || []).map(transformProvider);
+        setFeaturedProviders(transformed.slice(0, 6));
+      })
+      .catch(() => setFeaturedProviders([]));
   }, []);
 
-  // When user clicks Search on SearchBar
   const handleSearch = ({ service, location, coords }) => {
     const params = new URLSearchParams();
-    const term = (service || '').trim();
-    const loc = (location || '').trim();
-
-    if (term) params.set('search', term);
-    if (loc) params.set('location', loc);
+    if (service) params.set('service', service);
+    if (location) params.set('location', location);
     if (coords?.lat && coords?.lng) {
       params.set('lat', coords.lat);
       params.set('lng', coords.lng);
     }
-
     navigate(`/services?${params.toString()}`);
   };
 
@@ -78,20 +52,16 @@ export default function Landing() {
             <p className="mt-5 text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
               Book verified professionals for home services within your area. From electricians to beauticians — quality service at your doorstep.
             </p>
-
-            {/* Search Bar WIRED WITH onSearch */}
             <div className="mt-8 max-w-2xl mx-auto">
               <SearchBar onSearch={handleSearch} />
             </div>
-
-            {/* Popular Pills */}
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-text-muted">
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-sm text-text-muted">
               <span>Popular:</span>
               {['Electrician', 'Plumber', 'AC Repair', 'Cleaner', 'Carpenter'].map((s) => (
                 <Link
                   key={s}
-                  to={`/services?search=${encodeURIComponent(s)}`}
-                  className="px-3.5 py-1 rounded-full bg-white border border-border hover:border-primary/50 hover:text-primary transition-all duration-200 text-xs sm:text-sm font-medium cursor-pointer shadow-xs"
+                  to={`/services?service=${encodeURIComponent(s)}`}
+                  className="px-3 py-1 rounded-full bg-white border border-border hover:border-primary/50 hover:text-primary transition-all duration-200"
                 >
                   {s}
                 </Link>
@@ -128,12 +98,12 @@ export default function Landing() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {categories.map((cat) => (
-            <CategoryCard key={cat.id || cat.name} category={cat} />
+            <CategoryCard key={cat.id} category={cat} />
           ))}
         </div>
       </section>
 
-      {/* Featured Providers (Live MongoDB) */}
+      {/* Featured Providers */}
       <section className="bg-surface py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-end justify-between mb-10">
@@ -148,13 +118,11 @@ export default function Landing() {
               View All →
             </Link>
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {featuredProviders.map((provider) => (
-              <ServiceCard key={provider.id || provider._id} provider={provider} />
+              <ServiceCard key={provider.id} provider={provider} />
             ))}
           </div>
-
           <div className="mt-8 text-center sm:hidden">
             <Link
               to="/services"
@@ -181,13 +149,13 @@ export default function Landing() {
             <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
               <Link
                 to="/services"
-                className="px-8 py-3 bg-white text-primary font-semibold rounded-xl hover:bg-blue-50 transition-colors cursor-pointer"
+                className="px-8 py-3 bg-white text-primary font-semibold rounded-xl hover:bg-blue-50 transition-colors"
               >
                 Get Started
               </Link>
               <Link
-                to="/services"
-                className="px-8 py-3 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
+                to="/"
+                className="px-8 py-3 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors"
               >
                 Learn More
               </Link>
