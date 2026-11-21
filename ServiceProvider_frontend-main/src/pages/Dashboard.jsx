@@ -6,6 +6,8 @@ import API, { transformProvider, transformBooking } from '../utils/api';
 import { categories } from '../data/categories';
 import { notifications } from '../data/bookings';
 import { HiBell, HiCalendar, HiClock } from 'react-icons/hi';
+import ProviderTrackingToggle from '../components/ProviderTrackingToggle';
+import LiveTrackingMap from '../components/LiveTrackingMap';
 
 export default function Dashboard() {
   const [recommended, setRecommended] = useState([]);
@@ -25,17 +27,9 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         // 1. Fetch live providers for "Recommended for You"
-        const provRes = await API.get('/providers').catch(() => ({ data: [] }));
-        const rawList = Array.isArray(provRes.data) ? provRes.data : [];
-        const formattedProviders = rawList.map(transformProvider);
-
-        const recs = formattedProviders.filter((p) => p.recommended);
-        // Fallback: If no provider meets the strict Bayesian threshold yet, show top rated
-        setRecommended(
-          recs.length > 0
-            ? recs
-            : [...formattedProviders].sort((a, b) => (b.rating || 0) - (a.rating || 0))
-        );
+        const provRes = await API.get('/providers');
+        const formattedProviders = provRes.data.map(transformProvider);
+        setRecommended(formattedProviders.filter((p) => p.recommended));
 
         // 2. Read active authenticated session from localStorage
         const storedUser = localStorage.getItem('user');
@@ -53,8 +47,7 @@ export default function Dashboard() {
         // 3. Fetch real bookings from MongoDB for this authenticated user
         if (parsedUser?._id) {
           const bookRes = await API.get(`/bookings/user/${parsedUser._id}`).catch(() => ({ data: [] }));
-          const rawBookings = Array.isArray(bookRes.data) ? bookRes.data : [];
-          const formattedBookings = rawBookings.map(transformBooking);
+          const formattedBookings = (bookRes.data || []).map(transformBooking);
           setUserBookings(formattedBookings);
         } else {
           setUserBookings([]);
@@ -70,8 +63,6 @@ export default function Dashboard() {
   }, []);
 
   const handleCancelBooking = async (bookingId) => {
-    if (!bookingId) return;
-
     const confirmed = window.confirm('Are you sure you want to cancel this booking?');
     if (!confirmed) return;
 
@@ -79,7 +70,7 @@ export default function Dashboard() {
     try {
       await API.patch(`/bookings/${bookingId}/status`, { status: 'cancelled' });
       setUserBookings((prev) =>
-        prev.map((b) => ((b.id || b._id) === bookingId ? { ...b, status: 'cancelled' } : b))
+        prev.map((b) => (b.id === bookingId ? { ...b, status: 'cancelled' } : b))
       );
     } catch (err) {
       console.error('Failed to cancel booking:', err);
@@ -120,13 +111,24 @@ export default function Dashboard() {
             ) : recommended.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {recommended.slice(0, 4).map((provider) => (
-                  <ServiceCard key={provider.id || provider._id} provider={provider} />
+                  <ServiceCard key={provider.id} provider={provider} />
                 ))}
               </div>
             ) : (
               <p className="text-sm text-text-secondary">No recommended providers available.</p>
             )}
           </section>
+
+
+          {/* ── Provider: Location Sharing Toggle ── */}
+          {currentUser?.role === 'provider' && (
+            <section className="mb-8 space-y-4">
+              <h2 className="text-lg font-bold text-text-primary">🚗 Share Your Location</h2>
+              <p className="text-sm text-text-secondary -mt-2">For active bookings, share your live location so the customer can track you.</p>
+              {/* TODO: In production, show one toggle per active booking. Demo uses a fixed bookingId. */}
+              <ProviderTrackingToggle bookingId="demo-booking-123" />
+            </section>
+          )}
 
           {/* Recent Bookings Section */}
           <section>
@@ -140,22 +142,19 @@ export default function Dashboard() {
             {loading ? (
               <p className="text-sm text-text-secondary">Loading your live bookings...</p>
             ) : userBookings.length > 0 ? (
-              <div className="space-y-3">
-                {userBookings.map((booking) => {
-                  const bId = booking.id || booking._id;
-                  const bStatus = (booking.status || 'pending').toLowerCase();
-                  const targetProviderId = booking.providerId?._id || booking.providerId;
-
-                  return (
-                    <div
-                      key={bId}
-                      className="bg-white rounded-xl card-shadow p-4 flex flex-col sm:flex-row sm:items-center gap-3 border border-border/50 hover:border-primary/20 transition-colors"
-                    >
+              <div className="space-y-4">
+                {userBookings.map((booking) => (
+                  <div
+                    key={booking.id}
+                    className="bg-white rounded-xl card-shadow border border-border/50 overflow-hidden"
+                  >
+                    {/* Booking Summary Row */}
+                    <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-text-primary truncate">{booking.providerName}</p>
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[bStatus] || 'bg-gray-100 text-gray-600'}`}>
-                            {booking.status || 'Pending'}
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${statusColor[booking.status.toLowerCase()] || 'bg-gray-100 text-gray-600'}`}>
+                            {booking.status}
                           </span>
                         </div>
                         <p className="text-sm text-text-secondary mt-0.5">{booking.service} • {booking.category}</p>
@@ -174,30 +173,36 @@ export default function Dashboard() {
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-sm font-bold text-primary">₹{booking.price}</span>
 
-                        {/* Cancel Action */}
-                        {(bStatus === 'pending' || bStatus === 'confirmed') && (
+                        {(booking.status.toLowerCase() === 'pending' || booking.status.toLowerCase() === 'confirmed') && (
                           <button
                             type="button"
-                            onClick={() => handleCancelBooking(bId)}
-                            disabled={cancellingId === bId}
+                            onClick={() => handleCancelBooking(booking.id)}
+                            disabled={cancellingId === booking.id}
                             className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-50"
                           >
-                            {cancellingId === bId ? 'Cancelling...' : 'Cancel'}
+                            {cancellingId === booking.id ? 'Cancelling...' : 'Cancel'}
                           </button>
                         )}
 
-                        {targetProviderId && (
-                          <Link
-                            to={`/provider/${targetProviderId}`}
-                            className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
-                          >
-                            Details
-                          </Link>
-                        )}
+                        <Link
+                          to={`/provider/${booking.providerId}`}
+                          className="text-xs font-medium px-3 py-1.5 bg-primary/5 text-primary rounded-lg hover:bg-primary/10 transition-colors"
+                        >
+                          Details
+                        </Link>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Customer: Live Tracking Map — shown for confirmed or pending bookings */}
+                    {currentUser?.role === 'customer' &&
+                      ['confirmed', 'pending'].includes(booking.status.toLowerCase()) && (
+                      <div className="border-t border-border/40 px-4 pb-4 pt-3 bg-gray-50/50">
+                        <p className="text-xs font-semibold text-text-secondary mb-2">🗺️ Track Your Provider</p>
+                        <LiveTrackingMap bookingId={booking.id} mode="customer" />
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="bg-white rounded-xl card-shadow p-6 text-center border border-border/50">
@@ -217,8 +222,8 @@ export default function Dashboard() {
           <section>
             <h2 className="text-lg font-bold text-text-primary mb-4">Browse Categories</h2>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {(categories || []).slice(0, 6).map((cat) => (
-                <CategoryCard key={cat.id || cat._id || cat.name} category={cat} />
+              {categories.slice(0, 6).map((cat) => (
+                <CategoryCard key={cat.id} category={cat} />
               ))}
             </div>
           </section>
@@ -231,13 +236,13 @@ export default function Dashboard() {
               <HiBell className="w-5 h-5 text-primary" />
               <h3 className="font-bold text-text-primary">Notifications</h3>
               <span className="ml-auto text-xs font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-                {(notifications || []).filter((n) => !n.read).length} new
+                {notifications.filter((n) => !n.read).length} new
               </span>
             </div>
             <div className="divide-y divide-border">
-              {(notifications || []).map((notif) => (
+              {notifications.map((notif) => (
                 <div
-                  key={notif.id || notif._id}
+                  key={notif.id}
                   className={`px-5 py-3.5 hover:bg-gray-50 transition-colors ${
                     !notif.read ? 'bg-blue-50/30' : ''
                   }`}
@@ -256,21 +261,9 @@ export default function Dashboard() {
             <div className="space-y-3">
               {[
                 { label: 'Total Bookings', value: userBookings.length, color: 'text-primary' },
-                {
-                  label: 'Completed',
-                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'completed').length,
-                  color: 'text-emerald-600',
-                },
-                {
-                  label: 'Pending',
-                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'pending').length,
-                  color: 'text-amber-600',
-                },
-                {
-                  label: 'Confirmed',
-                  value: userBookings.filter((b) => (b.status || '').toLowerCase() === 'confirmed').length,
-                  color: 'text-blue-600',
-                },
+                { label: 'Completed', value: userBookings.filter((b) => b.status.toLowerCase() === 'completed').length, color: 'text-emerald-600' },
+                { label: 'Pending', value: userBookings.filter((b) => b.status.toLowerCase() === 'pending').length, color: 'text-amber-600' },
+                { label: 'Confirmed', value: userBookings.filter((b) => b.status.toLowerCase() === 'confirmed').length, color: 'text-blue-600' },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-center justify-between">
                   <span className="text-sm text-text-secondary">{stat.label}</span>
