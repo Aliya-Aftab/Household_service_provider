@@ -1,19 +1,20 @@
 import express from "express";
-import { 
-  createBooking, 
+import {
+  createBooking,
   updateBookingStatus,
   getUserBookings,
   getProviderBookings,
-  getAllBookings
+  getAllBookings,
 } from "../controllers/bookingController.js";
+import { protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.post("/", createBooking);
-router.get("/", getAllBookings);
-router.patch("/:id/status", updateBookingStatus);
+router.post("/", protect, createBooking);
+router.get("/", protect, authorize("admin"), getAllBookings);
+router.patch("/:id/status", protect, updateBookingStatus);
 
-router.get("/user/:id", getUserBookings);
-router.get("/provider/:id", getProviderBookings);
+router.get("/user/:id", protect, getUserBookings);
+router.get("/provider/:id", protect, getProviderBookings);
 
 export default router;

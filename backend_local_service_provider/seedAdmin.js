@@ -9,12 +9,12 @@ const createAdmin = async () => {
   try {
     const mongoUri = process.env.MONGO_URL || process.env.MONGO_URI || process.env.MONGODB_URI;
     if (!mongoUri) {
-      console.error("❌ Error: Could not find MONGO_URL in your .env file.");
+      console.error("Error: Could not find MONGO_URL in your .env file.");
       process.exit(1);
     }
 
     await mongoose.connect(mongoUri);
-    console.log("✅ Connected to MongoDB Atlas...");
+    console.log("Connected to MongoDB Atlas...");
 
     const adminEmail = "admin@smartservice.com";
     const adminPassword = "AdminPassword123";
@@ -25,7 +25,7 @@ const createAdmin = async () => {
     if (existingUser) {
       existingUser.role = "admin";
       await existingUser.save();
-      console.log(`✅ Existing user "${adminEmail}" promoted to admin!`);
+      console.log(`Existing user "${adminEmail}" promoted to admin!`);
     } else {
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(adminPassword, salt);
@@ -39,7 +39,7 @@ const createAdmin = async () => {
         isActive: true,
       });
 
-      console.log("✅ Admin account created successfully!");
+      console.log("Admin account created successfully!");
     }
 
     console.log("-----------------------------------------");
@@ -51,7 +51,7 @@ const createAdmin = async () => {
     await mongoose.disconnect();
     process.exit(0);
   } catch (err) {
-    console.error("❌ Failed to seed admin:", err.message);
+    console.error("Failed to seed admin:", err.message);
     process.exit(1);
   }
 };

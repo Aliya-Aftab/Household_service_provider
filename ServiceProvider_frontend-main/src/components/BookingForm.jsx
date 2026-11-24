@@ -11,8 +11,8 @@ export default function BookingForm({ provider, service, onSubmit }) {
     notes: '',
     payment: 'cash',
   });
+  const [formError, setFormError] = useState('');
 
-  // Auto-fill logged-in user phone if available
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     if (storedUser) {
@@ -28,24 +28,34 @@ export default function BookingForm({ provider, service, onSubmit }) {
   }, []);
 
   const handleChange = (e) => {
-    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    let nextValue = value;
+    if (name === 'phone') nextValue = value.replace(/\D/g, '').slice(0, 10);
+    if (name === 'pincode') nextValue = value.replace(/\D/g, '').slice(0, 6);
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
+    setFormError('');
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
     if (!form.date) {
-      alert('Please select a valid booking date.');
+      setFormError('Please select a valid booking date.');
       return;
     }
 
     if (!form.time) {
-      alert('Please select a preferred time slot.');
+      setFormError('Please select a preferred time slot.');
       return;
     }
 
     if (!form.address.trim()) {
-      alert('Please provide your service address.');
+      setFormError('Please provide your service address.');
+      return;
+    }
+
+    if (!/^[6-9]\d{9}$/.test(form.phone.trim())) {
+      setFormError('Please enter a valid 10-digit contact phone number.');
       return;
     }
 
@@ -53,15 +63,26 @@ export default function BookingForm({ provider, service, onSubmit }) {
   };
 
   const timeSlots = [
-    '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM',
-    '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM',
+    '9:00 AM',
+    '10:00 AM',
+    '11:00 AM',
+    '12:00 PM',
+    '2:00 PM',
+    '3:00 PM',
+    '4:00 PM',
+    '5:00 PM',
   ];
 
   const todayStr = new Date().toISOString().split('T')[0];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Date & Time */}
+      {formError && (
+        <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-medium border border-red-200">
+          {formError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="date">
@@ -91,13 +112,14 @@ export default function BookingForm({ provider, service, onSubmit }) {
             className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
           >
             {timeSlots.map((slot) => (
-              <option key={slot} value={slot}>{slot}</option>
+              <option key={slot} value={slot}>
+                {slot}
+              </option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Address */}
       <div>
         <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="address">
           Service Address
@@ -116,7 +138,9 @@ export default function BookingForm({ provider, service, onSubmit }) {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="city">City</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="city">
+            City
+          </label>
           <input
             id="city"
             type="text"
@@ -129,7 +153,9 @@ export default function BookingForm({ provider, service, onSubmit }) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="pincode">Pincode</label>
+          <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="pincode">
+            Pincode
+          </label>
           <input
             id="pincode"
             type="text"
@@ -144,7 +170,9 @@ export default function BookingForm({ provider, service, onSubmit }) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="phone">Contact Phone</label>
+        <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="phone">
+          Contact Phone
+        </label>
         <input
           id="phone"
           type="tel"
@@ -158,7 +186,6 @@ export default function BookingForm({ provider, service, onSubmit }) {
         />
       </div>
 
-      {/* Notes */}
       <div>
         <label className="block text-sm font-medium text-text-primary mb-1.5" htmlFor="notes">
           Special Instructions (Optional)
@@ -174,14 +201,13 @@ export default function BookingForm({ provider, service, onSubmit }) {
         />
       </div>
 
-      {/* Payment */}
       <div>
         <label className="block text-sm font-medium text-text-primary mb-2">Payment Method</label>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { value: 'cash', label: '💵 Cash', desc: 'Pay after service' },
-            { value: 'upi', label: '📱 UPI', desc: 'GPay / PhonePe / Paytm' },
-            { value: 'card', label: '💳 Card', desc: 'Credit / Debit' },
+            { value: 'cash', label: 'Cash', desc: 'Pay after service' },
+            { value: 'upi', label: 'UPI', desc: 'GPay / PhonePe / Paytm' },
+            { value: 'card', label: 'Card', desc: 'Credit / Debit' },
           ].map((method) => (
             <button
               type="button"
@@ -204,7 +230,7 @@ export default function BookingForm({ provider, service, onSubmit }) {
         type="submit"
         className="w-full py-3 bg-gradient-to-r from-primary to-accent text-white font-semibold rounded-xl hover:opacity-95 transition-all shadow-md cursor-pointer"
       >
-        Confirm & Place Booking
+        Confirm &amp; Place Booking
       </button>
     </form>
   );

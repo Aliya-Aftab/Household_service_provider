@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { HiShieldCheck, HiStar, HiArrowRight } from 'react-icons/hi';
 import SearchBar from '../components/SearchBar';
 import CategoryCard from '../components/CategoryCard';
 import ServiceCard from '../components/ServiceCard';
@@ -12,7 +13,6 @@ export default function Landing() {
   const [featuredProviders, setFeaturedProviders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch real providers from MongoDB Atlas for "Featured Providers"
   useEffect(() => {
     const loadFeatured = async () => {
       try {
@@ -21,7 +21,6 @@ export default function Landing() {
         const formatted = list.map(transformProvider);
         const recs = formatted.filter((p) => p.recommended);
 
-        // Use live recommended providers, or fallback to top-rated live providers
         if (recs.length > 0) {
           setFeaturedProviders(recs.slice(0, 3));
         } else if (formatted.length > 0) {
@@ -40,7 +39,6 @@ export default function Landing() {
     loadFeatured();
   }, []);
 
-  // When user clicks Search on SearchBar
   const handleSearch = ({ service, location, coords }) => {
     const params = new URLSearchParams();
     const term = (service || '').trim();
@@ -58,7 +56,6 @@ export default function Landing() {
 
   return (
     <div>
-      {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-br from-blue-50 via-white to-indigo-50">
         <div className="absolute inset-0 opacity-30">
           <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl"></div>
@@ -67,7 +64,8 @@ export default function Landing() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 lg:py-32">
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-medium px-4 py-1.5 rounded-full mb-6">
-              <span>✨</span> Trusted by 10,000+ users
+              <HiShieldCheck className="w-4 h-4" />
+              <span>Trusted by 10,000+ users</span>
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-text-primary leading-tight tracking-tight">
               Find Trusted Services{' '}
@@ -76,15 +74,13 @@ export default function Landing() {
               </span>
             </h1>
             <p className="mt-5 text-lg text-text-secondary max-w-xl mx-auto leading-relaxed">
-              Book verified professionals for home services within your area. From electricians to beauticians — quality service at your doorstep.
+              Book verified professionals for home services within your area. From electricians to beauticians &mdash; quality service at your doorstep.
             </p>
 
-            {/* Search Bar WIRED WITH onSearch */}
             <div className="mt-8 max-w-2xl mx-auto">
               <SearchBar onSearch={handleSearch} />
             </div>
 
-            {/* Popular Pills */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-sm text-text-muted">
               <span>Popular:</span>
               {['Electrician', 'Plumber', 'AC Repair', 'Cleaner', 'Carpenter'].map((s) => (
@@ -101,7 +97,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Stats */}
       <section className="border-b border-border bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
@@ -120,7 +115,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Categories */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="text-center mb-10">
           <h2 className="text-2xl sm:text-3xl font-bold text-text-primary">Browse Categories</h2>
@@ -133,27 +127,34 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Featured Providers (Live MongoDB) */}
       <section className="bg-surface py-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-end justify-between mb-10">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-text-primary">⭐ Featured Providers</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-text-primary flex items-center gap-2">
+                <HiStar className="w-7 h-7 text-amber-400" />
+                <span>Featured Providers</span>
+              </h2>
               <p className="text-text-secondary mt-2">Top-rated professionals recommended for you</p>
             </div>
             <Link
               to="/services"
-              className="hidden sm:inline-flex text-sm font-semibold text-primary hover:text-primary-dark transition-colors"
+              className="hidden sm:inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary-dark transition-colors"
             >
-              View All →
+              <span>View All</span>
+              <HiArrowRight className="w-4 h-4" />
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {featuredProviders.map((provider) => (
-              <ServiceCard key={provider.id || provider._id} provider={provider} />
-            ))}
-          </div>
+          {loading ? (
+            <p className="text-sm text-text-secondary">Loading featured providers...</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {featuredProviders.map((provider) => (
+                <ServiceCard key={provider.id || provider._id} provider={provider} />
+              ))}
+            </div>
+          )}
 
           <div className="mt-8 text-center sm:hidden">
             <Link
@@ -166,7 +167,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="bg-gradient-to-r from-primary to-accent rounded-3xl p-8 sm:p-12 text-center text-white relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">

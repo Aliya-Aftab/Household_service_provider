@@ -3,12 +3,21 @@ import ServiceProviderProfile from "../models/ServiceProvider.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
+const isProd = process.env.NODE_ENV === "production" || process.env.RENDER === "true";
+
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
+
 /* REVERSE GEOCODE lat/lng → city name via Nominatim (server-side) */
 const reverseGeocode = async (lat, lng) => {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'SmartService/1.0 (household-service-app)' }
+      headers: { "User-Agent": "SmartService/1.0 (household-service-app)" },
     });
     const data = await res.json();
     return (
@@ -17,10 +26,10 @@ const reverseGeocode = async (lat, lng) => {
       data?.address?.village ||
       data?.address?.county ||
       data?.address?.state ||
-      'Unknown Location'
+      "Unknown Location"
     );
   } catch (e) {
-    console.warn('Reverse geocoding failed:', e.message);
+    console.warn("Reverse geocoding failed:", e.message);
     return null;
   }
 };
@@ -30,7 +39,6 @@ export const registerUser = async (req, res) => {
   try {
     const { name, phone, email, password, role } = req.body;
 
-    // Check if user exists by either phone OR email
     const query = [];
     if (phone) query.push({ phone });
     if (email) query.push({ email });
@@ -62,13 +70,13 @@ export const registerUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // Sanitize output so hashed password is never transmitted
     const safeUser = user.toObject();
     delete safeUser.password;
 
+    res.cookie("token", token, getCookieOptions());
+
     res.status(201).json({
       message: "Registration successful",
-      token,
       user: safeUser,
     });
   } catch (err) {
@@ -85,10 +93,7 @@ export const loginUser = async (req, res) => {
       return res.status(400).json({ message: "Please provide login identifier and password" });
     }
 
-    // Allow login by either phone OR email
-    const user = await User.findOne(
-      phone ? { phone } : { email }
-    );
+    const user = await User.findOne(phone ? { phone } : { email });
 
     if (!user) {
       return res.status(400).json({ message: "User not found" });
@@ -105,27 +110,25 @@ export const loginUser = async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    // Update location for users if coordinates provided
     if (lat && lng) {
-      const resolvedName = locationName || await reverseGeocode(lat, lng);
+      const resolvedName = locationName || (await reverseGeocode(lat, lng));
 
       user.location = {
         type: "Point",
-        coordinates: [parseFloat(lng), parseFloat(lat)]
+        coordinates: [parseFloat(lng), parseFloat(lat)],
       };
       if (resolvedName) user.locationName = resolvedName;
       await user.save();
 
-      // If provider, also sync provider profile
       if (user.role === "provider") {
         await ServiceProviderProfile.findOneAndUpdate(
           { userId: user._id },
           {
             location: {
               type: "Point",
-              coordinates: [parseFloat(lng), parseFloat(lat)]
+              coordinates: [parseFloat(lng), parseFloat(lat)],
             },
-            ...(resolvedName && { locationName: resolvedName })
+            ...(resolvedName && { locationName: resolvedName }),
           }
         );
       }
@@ -134,14 +137,25 @@ export const loginUser = async (req, res) => {
     const safeUser = user.toObject();
     delete safeUser.password;
 
+    res.cookie("token", token, getCookieOptions());
+
     res.json({
       message: "Login successful",
-      token,
       user: safeUser,
     });
   } catch (err) {
     res.status(500).json({ message: err.message || "Login failed" });
   }
+};
+
+/* LOGOUT USER */
+export const logoutUser = (req, res) => {
+  res.clearCookie("token", {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+  });
+  res.json({ message: "Logged out successfully" });
 };
 
 /* GET ALL USERS (only active, non-deleted, excluding password hash) */
@@ -188,20 +202,19 @@ export const updateUserLocation = async (req, res) => {
       userId,
       {
         location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-        ...(resolvedName && { locationName: resolvedName })
+        ...(resolvedName && { locationName: resolvedName }),
       },
       { new: true }
     );
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Also update provider profile if applicable
     if (user.role === "provider") {
       await ServiceProviderProfile.findOneAndUpdate(
         { userId: user._id },
         {
           location: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
-          ...(resolvedName && { locationName: resolvedName })
+          ...(resolvedName && { locationName: resolvedName }),
         }
       );
     }

@@ -1,9 +1,10 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { useEffect } from 'react';
 import MainLayout from './layouts/MainLayout';
 import AdminLayout from './layouts/AdminLayout';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
+import ProviderDashboard from './pages/ProviderDashboard';
 import Services from './pages/Services';
 import ProviderProfile from './pages/ProviderProfile';
 import Booking from './pages/Booking';
@@ -12,44 +13,61 @@ import ProtectedRoute from './components/ProtectedRoute';
 import API from './utils/api';
 
 export default function App() {
-
-  // Silently refresh location for already-logged-in users on every app load
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (!user) return;
+    const syncSessionAndLocation = async () => {
+      const stored = localStorage.getItem('user');
+      if (!stored) return;
 
-    const parsedUser = JSON.parse(user);
-    if (!parsedUser?._id) return;
+      try {
+        const res = await API.get('/users/me');
+        const freshUser = res.data?.user;
+        if (freshUser?._id) {
+          localStorage.setItem('user', JSON.stringify(freshUser));
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-          try {
-            await API.patch('/users/location', {
-              userId: parsedUser._id,
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-            });
-          } catch (e) {
-            // Silent fail — location update is non-critical
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              async (pos) => {
+                try {
+                  await API.patch('/users/location', {
+                    userId: freshUser._id,
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude,
+                  });
+                } catch {
+                  // Non-critical
+                }
+              },
+              () => {}
+            );
           }
-        },
-        () => {} // Silently ignore if denied
-      );
-    }
+        }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          localStorage.removeItem('user');
+        }
+      }
+    };
+
+    syncSessionAndLocation();
   }, []);
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public & Customer Routes */}
+        {/* Main Layout Routes */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<Landing />} />
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/services" element={<Services />} />
           <Route path="/provider/:id" element={<ProviderProfile />} />
-          <Route path="/booking/:providerId" element={<Booking />} />
           <Route path="/booking" element={<Booking />} />
+
+          <Route element={<ProtectedRoute allowedRoles={['customer', 'provider', 'admin']} />}>
+            <Route path="/dashboard" element={<Dashboard />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['provider', 'admin']} />}>
+            <Route path="/provider-dashboard" element={<ProviderDashboard />} />
+          </Route>
         </Route>
 
         {/* Protected Admin Routes */}
@@ -63,9 +81,6 @@ export default function App() {
             <Route path="settings" element={<AdminDashboard />} />
           </Route>
         </Route>
-
-        {/* Fallback wildcard */}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

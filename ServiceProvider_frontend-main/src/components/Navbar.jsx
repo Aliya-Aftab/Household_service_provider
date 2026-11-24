@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { HiMenu, HiX, HiBell, HiLogout } from 'react-icons/hi';
 import AuthModal from './AuthModal';
+import API from '../utils/api';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -17,19 +19,42 @@ export default function Navbar() {
         setCurrentUser(JSON.parse(storedUser));
       } catch (e) {
         console.error('Failed to parse user session:', e);
+        setCurrentUser(null);
       }
+    } else {
+      setCurrentUser(null);
     }
-  }, []);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!currentUser?._id) {
+      setUnreadCount(0);
+      return;
+    }
+
+    API.get('/notifications')
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : [];
+        setUnreadCount(list.filter((n) => !n.isRead).length);
+      })
+      .catch(() => setUnreadCount(0));
+  }, [currentUser?._id, location.pathname]);
 
   const handleAuthSuccess = (user) => {
     setCurrentUser(user);
   };
 
-  const handleSignOut = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setCurrentUser(null);
-    navigate('/');
+  const handleSignOut = async () => {
+    try {
+      await API.post('/users/logout');
+    } catch (e) {
+      console.error('Logout request failed:', e);
+    } finally {
+      localStorage.removeItem('user');
+      setCurrentUser(null);
+      setUnreadCount(0);
+      navigate('/');
+    }
   };
 
   const getInitials = (name) => {
@@ -41,15 +66,16 @@ export default function Navbar() {
     return name.substring(0, 2).toUpperCase();
   };
 
-  // Base navigation links
+  const userRole = (currentUser?.role || '').toLowerCase();
+  const dashboardPath = userRole === 'provider' ? '/provider-dashboard' : '/dashboard';
+
   const navLinks = [
     { path: '/', label: 'Home' },
     { path: '/services', label: 'Services' },
-    { path: '/dashboard', label: 'Dashboard' },
+    ...(currentUser ? [{ path: dashboardPath, label: 'Dashboard' }] : []),
   ];
 
-  // Show Admin link exclusively if logged in as an admin
-  if (currentUser?.role === 'admin') {
+  if (userRole === 'admin') {
     navLinks.push({ path: '/admin', label: 'Admin' });
   }
 
@@ -58,7 +84,6 @@ export default function Navbar() {
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
             <Link to="/" className="flex items-center gap-2 group">
               <div className="w-9 h-9 bg-gradient-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg transition-all duration-300 group-hover:scale-105">
                 <span className="text-white font-bold text-sm">SS</span>
@@ -68,7 +93,6 @@ export default function Navbar() {
               </span>
             </Link>
 
-            {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-1">
               {navLinks.map((link) => (
                 <Link
@@ -85,20 +109,22 @@ export default function Navbar() {
               ))}
             </div>
 
-            {/* Desktop Right */}
             <div className="hidden md:flex items-center gap-3">
               {currentUser ? (
                 <>
                   <Link
-                    to="/dashboard"
+                    to={dashboardPath}
+                    aria-label="Notifications"
                     className="relative p-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-gray-100 transition-all duration-200"
                   >
                     <HiBell className="w-5 h-5" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-danger rounded-full"></span>
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger rounded-full"></span>
+                    )}
                   </Link>
 
                   <Link
-                    to="/dashboard"
+                    to={dashboardPath}
                     className="flex items-center gap-2 pl-2 pr-3 py-1 rounded-full bg-surface hover:bg-surface-dark transition-all duration-200 border border-border"
                   >
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
@@ -112,15 +138,17 @@ export default function Navbar() {
                   </Link>
 
                   <button
+                    type="button"
                     onClick={handleSignOut}
                     title="Sign Out"
-                    className="p-2 rounded-lg text-text-muted hover:text-danger hover:bg-red-50 transition-colors"
+                    className="p-2 rounded-lg text-text-muted hover:text-danger hover:bg-red-50 transition-colors cursor-pointer"
                   >
                     <HiLogout className="w-5 h-5" />
                   </button>
                 </>
               ) : (
                 <button
+                  type="button"
                   onClick={() => setAuthModalOpen(true)}
                   className="px-5 py-2 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-dark transition-all duration-200 cursor-pointer shadow-sm"
                 >
@@ -129,8 +157,8 @@ export default function Navbar() {
               )}
             </div>
 
-            {/* Mobile Toggle */}
             <button
+              type="button"
               onClick={() => setMobileOpen(!mobileOpen)}
               className="md:hidden p-2 rounded-lg text-text-secondary hover:bg-gray-100 transition-colors"
               aria-label="Toggle menu"
@@ -140,7 +168,6 @@ export default function Navbar() {
           </div>
         </div>
 
-        {/* Mobile Menu */}
         <div
           className={`md:hidden overflow-hidden transition-all duration-300 ${
             mobileOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
@@ -166,7 +193,7 @@ export default function Navbar() {
               {currentUser ? (
                 <div className="flex items-center justify-between px-2 py-2">
                   <Link
-                    to="/dashboard"
+                    to={dashboardPath}
                     onClick={() => setMobileOpen(false)}
                     className="flex items-center gap-3"
                   >
@@ -181,6 +208,7 @@ export default function Navbar() {
                     </div>
                   </Link>
                   <button
+                    type="button"
                     onClick={() => {
                       handleSignOut();
                       setMobileOpen(false);
@@ -192,6 +220,7 @@ export default function Navbar() {
                 </div>
               ) : (
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileOpen(false);
                     setAuthModalOpen(true);

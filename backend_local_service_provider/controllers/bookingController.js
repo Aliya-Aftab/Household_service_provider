@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 import Booking from "../models/Booking.js";
+import Notification from "../models/Notification.js";
+import ServiceProviderProfile from "../models/ServiceProvider.js";
 
 /* CREATE BOOKING */
 export const createBooking = async (req, res) => {
@@ -23,6 +25,33 @@ export const createBooking = async (req, res) => {
     const populated = await Booking.findById(booking._id)
       .populate("providerId", "name email phone")
       .populate("serviceCategory");
+
+    // Auto-create notifications for customer and provider (non-blocking)
+    try {
+      const serviceName = populated?.serviceCategory?.name || "a service";
+
+      // Resolve provider's User._id in case providerId is a ServiceProviderProfile._id
+      let providerUserId = providerId;
+      if (mongoose.Types.ObjectId.isValid(providerId)) {
+        const provProfile = await ServiceProviderProfile.findById(providerId).select("userId");
+        if (provProfile?.userId) {
+          providerUserId = provProfile.userId;
+        }
+      }
+
+      await Notification.insertMany([
+        {
+          userId: customerId,
+          message: `Your booking for ${serviceName} has been placed.`,
+        },
+        {
+          userId: providerUserId,
+          message: `You have a new booking request for ${serviceName}.`,
+        },
+      ]);
+    } catch (notifErr) {
+      console.error("Notification creation skipped:", notifErr.message);
+    }
 
     return res.status(201).json(populated || booking);
   } catch (err) {
@@ -57,6 +86,19 @@ export const updateBookingStatus = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
+    // Notify customer about status change (non-blocking)
+    try {
+      const targetUserId = booking.customerId || booking.userId;
+      if (targetUserId) {
+        await Notification.create({
+          userId: targetUserId,
+          message: `Your booking status has been updated to "${booking.status}".`,
+        });
+      }
+    } catch (notifErr) {
+      console.error("Status notification skipped:", notifErr.message);
+    }
+
     return res.json(booking);
   } catch (err) {
     return res.status(500).json({ message: err.message || "Failed to update booking status" });
@@ -73,7 +115,7 @@ export const getUserBookings = async (req, res) => {
     }
 
     const bookings = await Booking.find({
-      $or: [{ customerId: id }, { userId: id }]
+      $or: [{ customerId: id }, { userId: id }],
     })
       .populate("providerId", "name email phone")
       .populate("serviceCategory")
@@ -94,14 +136,21 @@ export const getProviderBookings = async (req, res) => {
       return res.json([]);
     }
 
-    const bookings = await Booking.find({ providerId: id })
+    // Match bookings saved under either the User._id or ServiceProviderProfile._id
+    const providerProfile = await ServiceProviderProfile.findOne({ userId: id }).select("_id");
+    const matchIds = [id];
+    if (providerProfile?._id) {
+      matchIds.push(providerProfile._id);
+    }
+
+    const bookings = await Booking.find({ providerId: { $in: matchIds } })
       .populate("customerId", "name email phone")
-      .populate("userId", "name email phone")
       .populate("serviceCategory")
       .sort({ createdAt: -1 });
 
     return res.json(bookings);
   } catch (err) {
+    console.error("getProviderBookings Error:", err);
     return res.status(500).json({ message: err.message || "Failed to fetch provider bookings" });
   }
 };
@@ -111,13 +160,13 @@ export const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
       .populate("customerId", "name email phone")
-      .populate("userId", "name email phone")
       .populate("providerId", "name email phone")
       .populate("serviceCategory")
       .sort({ createdAt: -1 });
 
     return res.json(bookings);
   } catch (err) {
+    console.error("getAllBookings Error:", err);
     return res.status(500).json({ message: err.message || "Failed to fetch all bookings" });
   }
 };

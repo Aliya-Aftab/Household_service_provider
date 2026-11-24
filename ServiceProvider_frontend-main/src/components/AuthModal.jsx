@@ -1,26 +1,31 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { HiEye, HiEyeOff } from 'react-icons/hi';
 import Modal from './Modal';
 import API from '../utils/api';
 
+const INITIAL_FORM = {
+  name: '',
+  phone: '',
+  email: '',
+  password: '',
+  role: 'customer',
+  aadhaarImage: '',
+  profilePicture: '',
+  certificates: [],
+  serviceCategory: '',
+  experienceYears: 1,
+};
+
 export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
+  const navigate = useNavigate();
   const [isRegister, setIsRegister] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    password: '',
-    role: 'customer',
-    aadhaarImage: '',
-    profilePicture: '',
-    certificates: '',
-    serviceCategory: '',
-    experienceYears: 1,
-  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [categories, setCategories] = useState([]);
 
-  // Fetch categories when the role switches to provider
   useEffect(() => {
     if (isRegister && formData.role === 'provider') {
       API.get('/categories')
@@ -29,8 +34,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     }
   }, [isRegister, formData.role]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      setShowPassword(false);
+      setError('');
+    }
+  }, [isOpen]);
+
   const handleChange = (e) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+    const { name, value } = e.target;
+    const nextValue = name === 'phone' ? value.replace(/\D/g, '').slice(0, 10) : value;
+    setFormData((prev) => ({ ...prev, [name]: nextValue }));
     setError('');
   };
 
@@ -55,33 +69,41 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         setError('Please enter a valid email address.');
         return false;
       }
+      if (formData.role === 'provider' && !formData.serviceCategory) {
+        setError('Please select your service category.');
+        return false;
+      }
     }
 
     return true;
   };
 
-  const handleFileChange = async (e) => {
-    const { name, files } = e.target;
-    if (!files.length) return;
-
-    if (name === 'certificates') {
-      const base64Files = await Promise.all(
-        Array.from(files).map((file) => convertToBase64(file))
-      );
-      setFormData((prev) => ({ ...prev, certificates: base64Files }));
-    } else {
-      const base64 = await convertToBase64(files[0]);
-      setFormData((prev) => ({ ...prev, [name]: base64 }));
-    }
-  };
-
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
+  const convertToBase64 = (file) =>
+    new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
+      reader.onerror = (err) => reject(err);
     });
+
+  const handleFileChange = async (e) => {
+    const { name, files } = e.target;
+    if (!files?.length) return;
+
+    try {
+      if (name === 'certificates') {
+        const base64Files = await Promise.all(
+          Array.from(files).map((file) => convertToBase64(file))
+        );
+        setFormData((prev) => ({ ...prev, certificates: base64Files }));
+      } else {
+        const base64 = await convertToBase64(files[0]);
+        setFormData((prev) => ({ ...prev, [name]: base64 }));
+      }
+      setError('');
+    } catch {
+      setError('Could not read the selected file. Please try another file.');
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -94,9 +116,8 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
     try {
       let lat = null;
       let lng = null;
-      let locationName = null;
+      const locationName = null;
 
-      // Get GPS coordinates — city name will be resolved server-side
       if (navigator.geolocation) {
         try {
           const pos = await new Promise((resolve, reject) => {
@@ -112,13 +133,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
       let authData = null;
 
       if (isRegister) {
-        // Validate: provider must select a category
-        if (formData.role === 'provider' && !formData.serviceCategory) {
-          setError('Please select your service category (e.g. Plumber, Beauty, Carpenter).');
-          setLoading(false);
-          return;
-        }
-
         const regPayload = {
           name: formData.name.trim(),
           phone: formData.phone.trim(),
@@ -128,7 +142,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         };
 
         const userRes = await API.post('/users/register', regPayload);
-        const newUserId = userRes.data._id;
+        const newUserId = userRes.data?.user?._id || userRes.data?._id;
 
         if (formData.role === 'provider') {
           await API.post('/providers', {
@@ -138,12 +152,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
             certificates: Array.isArray(formData.certificates) ? formData.certificates : [],
             servicesOffered: [formData.serviceCategory],
             experienceYears: Number(formData.experienceYears) || 1,
-            location: (lat && lng) ? { type: 'Point', coordinates: [lng, lat] } : undefined,
+            location: lat && lng ? { type: 'Point', coordinates: [lng, lat] } : undefined,
             locationName,
           });
         }
 
-        // Auto login after registration
         const loginRes = await API.post('/users/login', {
           phone: formData.phone.trim(),
           password: formData.password,
@@ -163,28 +176,19 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
         authData = loginRes.data;
       }
 
-      if (authData?.token && authData?.user) {
-        localStorage.setItem('token', authData.token);
+      if (authData?.user) {
         localStorage.setItem('user', JSON.stringify(authData.user));
-
         if (onAuthSuccess) {
           onAuthSuccess(authData.user);
         }
 
-        // Reset state & close modal
-        setFormData({
-          name: '',
-          phone: '',
-          email: '',
-          password: '',
-          role: 'customer',
-          aadhaarImage: '',
-          profilePicture: '',
-          certificates: '',
-          serviceCategory: '',
-          experienceYears: 1,
-        });
+        const signedInRole = (authData.user.role || '').toLowerCase();
+        setFormData(INITIAL_FORM);
         onClose();
+
+        if (signedInRole === 'provider') {
+          navigate('/provider-dashboard');
+        }
       } else {
         throw new Error('Authentication succeeded but invalid user payload received.');
       }
@@ -266,15 +270,25 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
           <label className="block text-xs font-semibold text-text-secondary mb-1">
             Password
           </label>
-          <input
-            type="password"
-            name="password"
-            required
-            value={formData.password}
-            onChange={handleChange}
-            placeholder="Enter your password"
-            className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary transition-colors"
-          />
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              name="password"
+              required
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter your password"
+              className="w-full px-4 py-2.5 pr-11 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary transition-colors"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+            >
+              {showPassword ? <HiEyeOff className="w-4 h-4" /> : <HiEye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
 
         {isRegister && (
@@ -294,7 +308,6 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
 
         {isRegister && formData.role === 'provider' && (
           <>
-            {/* ── Service Category (mandatory) ── */}
             <div>
               <label className="block text-xs font-semibold text-text-secondary mb-1">
                 Service Category <span className="text-red-500">*</span>
@@ -307,31 +320,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                 className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary"
               >
                 <option value="">-- Select your service type --</option>
-                {categories.length > 0 ? (
-                  categories.map((cat) => (
-                    <option key={cat._id} value={cat._id}>
-                      {cat.name}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="plumber">Plumber</option>
-                    <option value="electrician">Electrician</option>
-                    <option value="carpenter">Carpenter</option>
-                    <option value="beauty">Beauty &amp; Salon</option>
-                    <option value="cleaning">Cleaning</option>
-                    <option value="painter">Painter</option>
-                    <option value="ac_repair">AC Repair</option>
-                    <option value="appliance_repair">Appliance Repair</option>
-                  </>
-                )}
+                {categories.map((cat) => (
+                  <option key={cat._id} value={cat._id}>
+                    {cat.name || cat.categoryName}
+                  </option>
+                ))}
               </select>
-              <p className="text-[10px] text-text-muted mt-1">
+              <p className="text-[11px] text-text-muted mt-1">
                 Select the primary service you offer to customers.
               </p>
             </div>
 
-            {/* ── Experience Years ── */}
             <div>
               <label className="block text-xs font-semibold text-text-secondary mb-1">
                 Years of Experience
@@ -347,9 +346,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               />
             </div>
 
-            {/* ── Profile Picture ── */}
             <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Profile Picture (Image)</label>
+              <label className="block text-xs font-semibold text-text-secondary mb-1">
+                Profile Picture (Image)
+              </label>
               <input
                 type="file"
                 accept="image/*"
@@ -359,9 +359,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               />
             </div>
 
-            {/* ── Identity Document ── */}
             <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Identity Proof (Image) *</label>
+              <label className="block text-xs font-semibold text-text-secondary mb-1">
+                Identity Proof (Image) *
+              </label>
               <input
                 type="file"
                 accept="image/*,application/pdf"
@@ -372,9 +373,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
               />
             </div>
 
-            {/* ── Certificates ── */}
             <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1">Certificates (Multiple Allowed)</label>
+              <label className="block text-xs font-semibold text-text-secondary mb-1">
+                Certificates (Multiple Allowed)
+              </label>
               <input
                 type="file"
                 multiple
@@ -405,7 +407,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                   setIsRegister(false);
                   setError('');
                 }}
-                className="text-primary font-semibold hover:underline ml-1"
+                className="text-primary font-semibold hover:underline ml-1 cursor-pointer"
               >
                 Sign In
               </button>
@@ -419,7 +421,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess }) {
                   setIsRegister(true);
                   setError('');
                 }}
-                className="text-primary font-semibold hover:underline ml-1"
+                className="text-primary font-semibold hover:underline ml-1 cursor-pointer"
               >
                 Create Account
               </button>

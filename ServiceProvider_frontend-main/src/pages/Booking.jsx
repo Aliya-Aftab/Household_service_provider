@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams, useParams, Link, useNavigate } from 'react-router-dom';
+import { useSearchParams, useParams, Link } from 'react-router-dom';
 import BookingForm from '../components/BookingForm';
 import RatingStars from '../components/RatingStars';
 import API, { transformProvider } from '../utils/api';
@@ -9,9 +9,7 @@ import { HiCheckCircle, HiArrowLeft } from 'react-icons/hi';
 export default function Booking() {
   const [searchParams] = useSearchParams();
   const routeParams = useParams();
-  const navigate = useNavigate();
 
-  // Support both /booking/:providerId and /booking?provider=...
   const providerParam = routeParams.providerId || searchParams.get('provider');
   const serviceIndex = parseInt(searchParams.get('service') || '0', 10);
 
@@ -21,6 +19,7 @@ export default function Booking() {
   const [createdBooking, setCreatedBooking] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
     const fetchTargetProvider = async () => {
@@ -29,7 +28,6 @@ export default function Booking() {
           const res = await API.get(`/providers/${providerParam}`);
           setProvider(transformProvider(res.data));
         } else {
-          // If no param supplied, grab the first active provider
           const res = await API.get('/providers');
           if (Array.isArray(res.data) && res.data.length > 0) {
             setProvider(transformProvider(res.data[0]));
@@ -45,9 +43,16 @@ export default function Booking() {
     fetchTargetProvider();
   }, [providerParam]);
 
-  const activeServices = provider?.services && provider.services.length > 0
-    ? provider.services
-    : [{ name: provider?.category || 'Standard Service', price: provider?.price || 299, categoryId: provider?.categoryId }];
+  const activeServices =
+    provider?.services && provider.services.length > 0
+      ? provider.services
+      : [
+          {
+            name: provider?.category || 'Standard Service',
+            price: provider?.price || 299,
+            categoryId: provider?.categoryId,
+          },
+        ];
 
   const service = activeServices[serviceIndex] || activeServices[0];
   const servicePrice = Number(service?.price || provider?.price || 299);
@@ -56,6 +61,7 @@ export default function Booking() {
   const totalAmount = servicePrice + platformFee + taxes;
 
   const handleSubmit = async (formData) => {
+    setErrorMsg('');
     const storedUser = localStorage.getItem('user');
     let user = null;
 
@@ -68,13 +74,18 @@ export default function Booking() {
     }
 
     if (!user?._id) {
-      alert('Please sign in or create an account to confirm this booking.');
       setAuthModalOpen(true);
       return;
     }
 
     setSubmitting(true);
     try {
+      const addressParts = [
+        formData.address?.trim(),
+        formData.city?.trim(),
+        formData.pincode?.trim() ? `- ${formData.pincode.trim()}` : '',
+      ].filter(Boolean);
+
       const payload = {
         customerId: user._id,
         providerId: provider.userDocId || provider.id || provider._id,
@@ -84,7 +95,7 @@ export default function Booking() {
           startTime: formData.time || '10:00 AM',
           endTime: formData.time || '11:00 AM',
         },
-        address: `${formData.address}, ${formData.city} - ${formData.pincode}`,
+        address: addressParts.join(', ').replace(', -', ' -'),
         price: totalAmount,
         status: 'pending',
       };
@@ -94,7 +105,11 @@ export default function Booking() {
       setConfirmed(true);
     } catch (err) {
       console.error('Booking Error:', err);
-      alert(err.response?.data?.message || err.response?.data?.error || 'Failed to place booking. Please try again.');
+      setErrorMsg(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          'Failed to place booking. Please try again.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -111,9 +126,11 @@ export default function Booking() {
   if (!provider) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <p className="text-4xl mb-3">😕</p>
         <h2 className="text-xl font-bold text-text-primary">Provider Not Found</h2>
-        <Link to="/services" className="mt-4 inline-block text-sm text-primary font-semibold hover:underline">
+        <Link
+          to="/services"
+          className="mt-4 inline-block text-sm text-primary font-semibold hover:underline"
+        >
           Return to All Services
         </Link>
       </div>
@@ -123,22 +140,25 @@ export default function Booking() {
   if (confirmed) {
     const bookingIdDisplay = createdBooking?._id
       ? String(createdBooking._id).substring(String(createdBooking._id).length - 6).toUpperCase()
-      : 'SUCCESS';
+      : 'CONFIRMED';
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
           <HiCheckCircle className="w-10 h-10 text-emerald-600" />
         </div>
-        <h1 className="text-2xl font-bold text-text-primary">Booking Confirmed! 🎉</h1>
+        <h1 className="text-2xl font-bold text-text-primary">Booking Confirmed</h1>
         <p className="mt-3 text-text-secondary">
-          Your appointment with <strong>{provider.name}</strong> for <strong>{service.name}</strong> has been sent.
+          Your appointment with <strong>{provider.name}</strong> for <strong>{service.name}</strong>{' '}
+          has been placed.
         </p>
 
         <div className="mt-8 bg-white rounded-2xl card-shadow p-6 text-left border border-border/50">
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-bold text-text-primary">Booking Summary</h3>
-            <span className="text-xs bg-primary/10 text-primary font-mono px-2 py-0.5 rounded">#{bookingIdDisplay}</span>
+            <span className="text-xs bg-primary/10 text-primary font-mono px-2 py-0.5 rounded">
+              #{bookingIdDisplay}
+            </span>
           </div>
           <div className="space-y-3">
             {[
@@ -183,21 +203,25 @@ export default function Booking() {
         Back to profile
       </Link>
 
-      <h1 className="text-2xl sm:text-3xl font-bold text-text-primary mb-8">Complete Your Booking</h1>
+      <h1 className="text-2xl sm:text-3xl font-bold text-text-primary mb-8">
+        Complete Your Booking
+      </h1>
+
+      {errorMsg && (
+        <div className="mb-6 p-3.5 rounded-xl bg-red-50 text-red-600 text-xs font-medium border border-red-200">
+          {errorMsg}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-3">
           <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
             {submitting ? (
               <div className="py-12 text-center text-primary font-medium">
-                Saving booking to MongoDB Atlas...
+                Saving booking...
               </div>
             ) : (
-              <BookingForm
-                provider={provider}
-                service={service}
-                onSubmit={handleSubmit}
-              />
+              <BookingForm provider={provider} service={service} onSubmit={handleSubmit} />
             )}
           </div>
         </div>
@@ -221,33 +245,34 @@ export default function Booking() {
             <div className="py-4 border-b border-border">
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">{service.name}</span>
-                <span className="font-medium text-text-primary">₹{servicePrice}</span>
+                <span className="font-medium text-text-primary">&#8377;{servicePrice}</span>
               </div>
             </div>
 
             <div className="py-4 border-b border-border">
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-text-secondary">Service Base Fee</span>
-                <span className="text-text-primary">₹{servicePrice}</span>
+                <span className="text-text-primary">&#8377;{servicePrice}</span>
               </div>
               <div className="flex justify-between text-sm mb-2">
                 <span className="text-text-secondary">Platform Fee</span>
-                <span className="text-text-primary">₹{platformFee}</span>
+                <span className="text-text-primary">&#8377;{platformFee}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-text-secondary">Taxes (18% GST)</span>
-                <span className="text-text-primary">₹{taxes}</span>
+                <span className="text-text-primary">&#8377;{taxes}</span>
               </div>
             </div>
 
             <div className="pt-4 flex justify-between">
               <span className="font-bold text-text-primary">Total Amount</span>
-              <span className="text-xl font-bold text-primary">₹{totalAmount}</span>
+              <span className="text-xl font-bold text-primary">&#8377;{totalAmount}</span>
             </div>
 
-            <div className="mt-5 p-3 bg-emerald-50 rounded-xl">
+            <div className="mt-5 p-3 bg-emerald-50 rounded-xl flex items-start gap-2">
+              <HiCheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p className="text-xs text-emerald-700 font-medium">
-                ✅ 100% satisfaction guaranteed. Free cancellation before appointment dispatch.
+                100% satisfaction guaranteed. Free cancellation before appointment dispatch.
               </p>
             </div>
           </div>

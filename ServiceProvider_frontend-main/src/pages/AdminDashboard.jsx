@@ -1,11 +1,34 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import DashboardCard from '../components/DashboardCard';
 import API, { transformProvider } from '../utils/api';
-import { adminStats } from '../data/bookings';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area,
+  HiUsers,
+  HiBriefcase,
+  HiCalendar,
+  HiCurrencyRupee,
+  HiTrash,
+  HiSearch,
+  HiExternalLink,
+  HiCheckCircle,
+  HiPhone,
+  HiLocationMarker,
+  HiMail,
+  HiChevronUp,
+  HiChevronDown,
+  HiDocumentText,
+  HiShieldCheck,
+} from 'react-icons/hi';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
 } from 'recharts';
 
 export default function AdminDashboard() {
@@ -26,9 +49,10 @@ export default function AdminDashboard() {
   const [expandedProvider, setExpandedProvider] = useState(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
 
-  // Close lightbox on Escape key
   useEffect(() => {
-    const handleKey = (e) => { if (e.key === 'Escape') setLightboxSrc(null); };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') setLightboxSrc(null);
+    };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, []);
@@ -57,7 +81,7 @@ export default function AdminDashboard() {
     try {
       await API.patch(`/providers/${providerId}/verify`);
       setProvidersList((prev) =>
-        prev.map((p) => ((p.id === providerId || p._id === providerId) ? { ...p, verified: true } : p))
+        prev.map((p) => (p.id === providerId || p._id === providerId ? { ...p, verified: true } : p))
       );
     } catch (err) {
       console.error('Failed to verify provider:', err);
@@ -83,8 +107,13 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteProvider = async (providerId) => {
-    if (!window.confirm("Are you sure you want to delete this provider request? This action cannot be undone.")) return;
-    
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this provider request? This action cannot be undone.'
+      )
+    )
+      return;
+
     try {
       await API.delete(`/providers/${providerId}`);
       setProvidersList((prev) => prev.filter((p) => p.id !== providerId));
@@ -99,7 +128,12 @@ export default function AdminDashboard() {
       alert('Admin accounts cannot be deleted.');
       return;
     }
-    if (!window.confirm('Are you sure you want to delete this user? They will no longer appear in the system.')) return;
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this user? They will no longer appear in the system.'
+      )
+    )
+      return;
 
     try {
       await API.delete(`/users/${userId}`);
@@ -132,28 +166,27 @@ export default function AdminDashboard() {
           revenue: totalRevenue,
         });
 
-        // Map live bookings safely
         const formattedBookings = rawBookings.map((b) => {
           const rawId = String(b._id || '000000');
           const d = b.bookingDate ? new Date(b.bookingDate) : new Date(b.createdAt || Date.now());
           return {
             id: rawId.length >= 6 ? rawId.substring(rawId.length - 6).toUpperCase() : rawId,
             fullId: b._id,
+            rawDate: d,
             user: b.customerId?.name || 'Customer',
             provider: b.providerId?.name || 'Provider',
             service: b.serviceCategory?.name || b.serviceCategory?.categoryName || 'General Service',
             date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            amount: b.price || 299,
+            amount: Number(b.price) || 299,
             status: b.status || 'pending',
           };
         });
         setBookingsList(formattedBookings);
 
-        // Map registered users safely
         const formattedUsers = rawUsers.map((u) => {
           const d = u.createdAt ? new Date(u.createdAt) : new Date();
-          const count = rawBookings.filter((b) => 
-            (b.customerId?._id || b.customerId) === u._id
+          const count = rawBookings.filter(
+            (b) => (b.customerId?._id || b.customerId) === u._id
           ).length;
 
           return {
@@ -168,7 +201,6 @@ export default function AdminDashboard() {
         });
         setUsersList(formattedUsers);
 
-        // Map providers
         const formattedProviders = rawProviders.map(transformProvider);
         setProvidersList(formattedProviders);
       } catch (err) {
@@ -181,12 +213,65 @@ export default function AdminDashboard() {
     fetchAdminData();
   }, []);
 
+  const monthlyChartData = useMemo(() => {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const buckets = new Map();
+
+    const now = new Date();
+    for (let i = 5; i >= 0; i -= 1) {
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+      buckets.set(key, { month: months[dt.getMonth()], bookings: 0, revenue: 0 });
+    }
+
+    bookingsList.forEach((b) => {
+      const dt = b.rawDate instanceof Date && !Number.isNaN(b.rawDate.getTime()) ? b.rawDate : new Date();
+      const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+      if (!buckets.has(key)) {
+        buckets.set(key, { month: months[dt.getMonth()], bookings: 0, revenue: 0 });
+      }
+      const entry = buckets.get(key);
+      entry.bookings += 1;
+      entry.revenue += Number(b.amount) || 0;
+    });
+
+    return Array.from(buckets.values());
+  }, [bookingsList]);
+
   const renderStatsCards = () => (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-      <DashboardCard icon="👥" label="Total Users" value={stats.totalUsers.toLocaleString()} trend="Live DB" trendUp color="primary" />
-      <DashboardCard icon="🔧" label="Service Providers" value={stats.totalProviders.toLocaleString()} trend="Live DB" trendUp color="accent" />
-      <DashboardCard icon="📅" label="Total Bookings" value={stats.totalBookings.toLocaleString()} trend="Live DB" trendUp color="success" />
-      <DashboardCard icon="💰" label="Revenue" value={`₹${stats.revenue.toLocaleString()}`} trend="Live DB" trendUp color="warning" />
+      <DashboardCard
+        icon={<HiUsers className="w-5 h-5" />}
+        label="Total Users"
+        value={stats.totalUsers.toLocaleString()}
+        trend="Live DB"
+        trendUp
+        color="primary"
+      />
+      <DashboardCard
+        icon={<HiBriefcase className="w-5 h-5" />}
+        label="Service Providers"
+        value={stats.totalProviders.toLocaleString()}
+        trend="Live DB"
+        trendUp
+        color="accent"
+      />
+      <DashboardCard
+        icon={<HiCalendar className="w-5 h-5" />}
+        label="Total Bookings"
+        value={stats.totalBookings.toLocaleString()}
+        trend="Live DB"
+        trendUp
+        color="success"
+      />
+      <DashboardCard
+        icon={<HiCurrencyRupee className="w-5 h-5" />}
+        label="Revenue"
+        value={`₹${stats.revenue.toLocaleString()}`}
+        trend="Live DB"
+        trendUp
+        color="warning"
+      />
     </div>
   );
 
@@ -195,29 +280,40 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
         <h3 className="font-bold text-text-primary mb-4">Booking Trends</h3>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={adminStats?.monthlyData || []}>
+          <AreaChart data={monthlyChartData}>
             <defs>
               <linearGradient id="colorBookings" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15}/>
-                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} />
+                <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94A3B8' }} />
-            <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} />
-            <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '13px' }} />
-            <Area type="monotone" dataKey="bookings" stroke="#3B82F6" strokeWidth={2} fill="url(#colorBookings)" />
+            <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: '#94A3B8' }} />
+            <Tooltip
+              contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '13px' }}
+            />
+            <Area
+              type="monotone"
+              dataKey="bookings"
+              stroke="#3B82F6"
+              strokeWidth={2}
+              fill="url(#colorBookings)"
+            />
           </AreaChart>
         </ResponsiveContainer>
       </div>
       <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
-        <h3 className="font-bold text-text-primary mb-4">Revenue (₹)</h3>
+        <h3 className="font-bold text-text-primary mb-4">Revenue (&#8377;)</h3>
         <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={adminStats?.monthlyData || []}>
+          <BarChart data={monthlyChartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94A3B8' }} />
             <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} />
-            <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '13px' }} formatter={(value) => [`₹${Number(value).toLocaleString()}`, 'Revenue']} />
+            <Tooltip
+              contentStyle={{ borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '13px' }}
+              formatter={(value) => [`₹${Number(value).toLocaleString()}`, 'Revenue']}
+            />
             <Bar dataKey="revenue" fill="#6366F1" radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
@@ -228,8 +324,10 @@ export default function AdminDashboard() {
   const renderBookingsTable = () => (
     <div className="bg-white rounded-2xl card-shadow border border-border/50 overflow-hidden">
       <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-        <h3 className="font-bold text-text-primary">All Bookings (Live MongoDB)</h3>
-        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">{bookingsList.length} Total</span>
+        <h3 className="font-bold text-text-primary">All Bookings</h3>
+        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">
+          {bookingsList.length} Total
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -253,12 +351,14 @@ export default function AdminDashboard() {
                   <td className="px-6 py-3.5 text-sm text-text-primary">{b.provider}</td>
                   <td className="px-6 py-3.5 text-sm text-text-secondary">{b.service}</td>
                   <td className="px-6 py-3.5 text-sm text-text-secondary">{b.date}</td>
-                  <td className="px-6 py-3.5 text-sm font-medium text-text-primary">₹{b.amount}</td>
+                  <td className="px-6 py-3.5 text-sm font-medium text-text-primary">&#8377;{b.amount}</td>
                   <td className="px-6 py-3.5">
                     <select
                       value={b.status}
                       onChange={(e) => handleStatusChange(b.fullId, e.target.value)}
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-lg border border-border outline-none cursor-pointer ${statusColor[b.status] || 'bg-gray-100 text-gray-600'}`}
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-lg border border-border outline-none cursor-pointer ${
+                        statusColor[b.status] || 'bg-gray-100 text-gray-600'
+                      }`}
                     >
                       <option value="pending">Pending</option>
                       <option value="confirmed">Confirmed</option>
@@ -270,7 +370,9 @@ export default function AdminDashboard() {
               ))
             ) : (
               <tr>
-                <td colSpan="7" className="px-6 py-8 text-center text-sm text-text-secondary">No bookings found.</td>
+                <td colSpan="7" className="px-6 py-8 text-center text-sm text-text-secondary">
+                  No bookings found.
+                </td>
               </tr>
             )}
           </tbody>
@@ -283,7 +385,9 @@ export default function AdminDashboard() {
     <div className="bg-white rounded-2xl card-shadow border border-border/50 overflow-hidden">
       <div className="px-6 py-4 border-b border-border flex justify-between items-center">
         <h3 className="font-bold text-text-primary">Registered Users</h3>
-        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">{usersList.length} Total</span>
+        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">
+          {usersList.length} Total
+        </span>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -301,7 +405,9 @@ export default function AdminDashboard() {
           <tbody className="divide-y divide-border">
             {usersList.length === 0 && (
               <tr>
-                <td colSpan="7" className="px-6 py-8 text-center text-sm text-text-secondary">No users found.</td>
+                <td colSpan="7" className="px-6 py-8 text-center text-sm text-text-secondary">
+                  No users found.
+                </td>
               </tr>
             )}
             {usersList.map((u) => (
@@ -312,7 +418,13 @@ export default function AdminDashboard() {
                 <td className="px-6 py-3 text-sm text-text-secondary">{u.joined}</td>
                 <td className="px-6 py-3 text-sm text-text-primary">{u.bookings}</td>
                 <td className="px-6 py-3">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${u.status === 'active' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                  <span
+                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                      u.status === 'active'
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
                     {u.status}
                   </span>
                 </td>
@@ -321,12 +433,13 @@ export default function AdminDashboard() {
                     <button
                       type="button"
                       onClick={() => handleDeleteUser(u.id, u.role)}
-                      className="text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
                     >
-                      🗑️ Delete
+                      <HiTrash className="w-3.5 h-3.5" />
+                      <span>Delete</span>
                     </button>
                   ) : (
-                    <span className="text-xs text-text-muted">—</span>
+                    <span className="text-xs text-text-muted">&mdash;</span>
                   )}
                 </td>
               </tr>
@@ -337,15 +450,37 @@ export default function AdminDashboard() {
     </div>
   );
 
-  // Helper to check if string is Base64 data URI
-  const isBase64 = (str) => str && str.startsWith('data:');
+  const isBase64 = (str) => typeof str === 'string' && str.startsWith('data:');
+  const isPdfData = (str) => typeof str === 'string' && str.startsWith('data:application/pdf');
 
-  // Helper to render an image/doc — click to open in lightbox
   const renderDoc = (src, label) => {
     if (!src || src === 'default_id_url') return null;
+
+    if (isPdfData(src)) {
+      return (
+        <div key={label} className="mt-2">
+          <p className="text-[10px] font-semibold text-text-muted mb-1">{label} (PDF)</p>
+          <div className="w-full max-w-xs rounded-lg border border-border bg-white overflow-hidden">
+            <iframe
+              src={src}
+              title={label}
+              className="w-full h-36 border-0 pointer-events-none"
+            />
+            <button
+              type="button"
+              onClick={() => setLightboxSrc(src)}
+              className="w-full py-1.5 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+            >
+              Open Full PDF
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     if (isBase64(src)) {
       return (
-        <div className="mt-2">
+        <div key={label} className="mt-2">
           <p className="text-[10px] font-semibold text-text-muted mb-1">{label}</p>
           <div className="relative group inline-block">
             <img
@@ -358,18 +493,25 @@ export default function AdminDashboard() {
               onClick={() => setLightboxSrc(src)}
               className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 rounded-lg transition-all cursor-zoom-in"
             >
-              <span className="text-white text-xs font-bold opacity-0 group-hover:opacity-100 bg-black/60 px-2 py-1 rounded transition-opacity">
-                🔍 Click to Expand
+              <span className="inline-flex items-center gap-1 text-white text-xs font-bold opacity-0 group-hover:opacity-100 bg-black/60 px-2 py-1 rounded transition-opacity">
+                <HiSearch className="w-3.5 h-3.5" /> Click to Expand
               </span>
             </div>
           </div>
         </div>
       );
     }
+
     return (
-      <a href={src} target="_blank" rel="noreferrer"
-        className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-primary/10 px-2 py-1 rounded mt-1">
-        🔗 {label}
+      <a
+        key={label}
+        href={src}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-primary hover:underline bg-primary/10 px-2 py-1 rounded mt-1"
+      >
+        <HiExternalLink className="w-3.5 h-3.5" />
+        <span>{label}</span>
       </a>
     );
   };
@@ -377,8 +519,10 @@ export default function AdminDashboard() {
   const renderProvidersList = () => (
     <div className="bg-white rounded-2xl card-shadow border border-border/50 overflow-hidden">
       <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-        <h3 className="font-bold text-text-primary">Service Providers Verification & Roster</h3>
-        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">{providersList.length} Total</span>
+        <h3 className="font-bold text-text-primary">Service Providers Verification &amp; Roster</h3>
+        <span className="text-xs bg-primary/10 text-primary font-semibold px-2.5 py-1 rounded-full">
+          {providersList.length} Total
+        </span>
       </div>
       <div className="p-4 grid grid-cols-1 gap-3">
         {providersList.length === 0 && (
@@ -386,7 +530,6 @@ export default function AdminDashboard() {
         )}
         {providersList.map((p) => (
           <div key={p.id} className="rounded-xl border border-border/60 overflow-hidden">
-            {/* --- Summary Row (always visible) --- */}
             <div
               className="flex flex-col md:flex-row items-start md:items-center gap-4 p-4 hover:bg-gray-50 transition-colors cursor-pointer"
               onClick={() => setExpandedProvider(expandedProvider === p.id ? null : p.id)}
@@ -395,41 +538,79 @@ export default function AdminDashboard() {
                 <img
                   src={p.image}
                   alt={p.name}
-                  onClick={(e) => { e.stopPropagation(); setLightboxSrc(p.image); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxSrc(p.image);
+                  }}
                   className="w-14 h-14 rounded-xl object-cover border border-border cursor-zoom-in hover:opacity-90 transition-opacity"
-                  onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face"; }}
+                  onError={(e) => {
+                    e.target.src =
+                      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face';
+                  }}
                 />
-                <div className="absolute inset-0 rounded-xl flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-all pointer-events-none">
-                  <span className="text-white text-[9px] font-bold opacity-0 group-hover:opacity-100 transition-opacity">🔍</span>
-                </div>
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-semibold text-text-primary">{p.name}</p>
                   {p.verified ? (
-                    <span className="text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-0.5 rounded-full">✅ Verified</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-600 font-semibold px-2 py-0.5 rounded-full">
+                      <HiCheckCircle className="w-3 h-3" /> Verified
+                    </span>
                   ) : (
-                    <span className="text-[10px] bg-amber-50 text-amber-600 font-semibold px-2 py-0.5 rounded-full">⏳ Pending</span>
+                    <span className="text-[10px] bg-amber-50 text-amber-600 font-semibold px-2 py-0.5 rounded-full">
+                      Pending
+                    </span>
                   )}
                   {p.telephonicVerified && (
-                    <span className="text-[10px] bg-blue-50 text-blue-600 font-semibold px-2 py-0.5 rounded-full">📞 Called</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] bg-blue-50 text-blue-600 font-semibold px-2 py-0.5 rounded-full">
+                      <HiPhone className="w-3 h-3" /> Called
+                    </span>
                   )}
                 </div>
-                <p className="text-xs text-text-muted mt-0.5">{p.category} • 📍 {p.location} • Joined: {p.joinedAt}</p>
-                <p className="text-xs text-text-secondary mt-0.5">📞 {p.phone} &nbsp;|&nbsp; ✉️ {p.email}</p>
+                <p className="text-xs text-text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                  <span>{p.category}</span>
+                  <span>&bull;</span>
+                  <span className="inline-flex items-center gap-0.5">
+                    <HiLocationMarker className="w-3.5 h-3.5" />
+                    {p.location}
+                  </span>
+                  <span>&bull;</span>
+                  <span>Joined: {p.joinedAt}</span>
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5 flex items-center gap-3 flex-wrap">
+                  <span className="inline-flex items-center gap-1">
+                    <HiPhone className="w-3.5 h-3.5" />
+                    {p.phone}
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <HiMail className="w-3.5 h-3.5" />
+                    {p.email}
+                  </span>
+                </p>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs text-text-muted">{expandedProvider === p.id ? '▲ Hide' : '▼ Details'}</span>
+              <div className="flex items-center gap-1 shrink-0 text-xs text-text-muted">
+                {expandedProvider === p.id ? (
+                  <>
+                    <HiChevronUp className="w-4 h-4" />
+                    <span>Hide</span>
+                  </>
+                ) : (
+                  <>
+                    <HiChevronDown className="w-4 h-4" />
+                    <span>Details</span>
+                  </>
+                )}
               </div>
             </div>
 
-            {/* --- Expanded Detail Panel --- */}
             {expandedProvider === p.id && (
               <div className="px-4 pb-4 pt-2 border-t border-border/40 bg-gray-50">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Left: Documents */}
                   <div>
-                    <p className="text-xs font-bold text-text-primary mb-2">📄 Submitted Documents</p>
+                    <p className="text-xs font-bold text-text-primary mb-2 flex items-center gap-1.5">
+                      <HiDocumentText className="w-4 h-4 text-primary" />
+                      <span>Submitted Documents</span>
+                    </p>
                     {renderDoc(p.aadhaarImage, 'Identity / Verification Proof')}
                     {p.certificates && p.certificates.length > 0 ? (
                       p.certificates.map((cert, idx) => renderDoc(cert, `Certificate ${idx + 1}`))
@@ -438,33 +619,55 @@ export default function AdminDashboard() {
                     )}
                   </div>
 
-                  {/* Right: Actions */}
                   <div className="flex flex-col gap-2">
-                    <p className="text-xs font-bold text-text-primary mb-1">🛡️ Admin Actions</p>
+                    <p className="text-xs font-bold text-text-primary mb-1 flex items-center gap-1.5">
+                      <HiShieldCheck className="w-4 h-4 text-primary" />
+                      <span>Admin Actions</span>
+                    </p>
 
                     {!p.telephonicVerified ? (
-                      <button type="button" onClick={() => handleTelephonicVerify(p.id)}
+                      <button
+                        type="button"
+                        onClick={() => handleTelephonicVerify(p.id)}
                         disabled={verifyingId === `tel-${p.id}`}
-                        className="text-xs font-semibold px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer disabled:opacity-50">
-                        {verifyingId === `tel-${p.id}` ? 'Saving...' : '📞 Mark Telephonic Verified'}
+                        className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <HiPhone className="w-3.5 h-3.5" />
+                        <span>
+                          {verifyingId === `tel-${p.id}` ? 'Saving...' : 'Mark Telephonic Verified'}
+                        </span>
                       </button>
                     ) : (
-                      <span className="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-2 rounded-lg text-center">📞 Telephonic Verified</span>
+                      <span className="inline-flex items-center justify-center gap-1.5 text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-2 rounded-lg">
+                        <HiPhone className="w-3.5 h-3.5" />
+                        <span>Telephonic Verified</span>
+                      </span>
                     )}
 
                     {!p.verified ? (
-                      <button type="button" onClick={() => handleVerifyProvider(p.id)}
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyProvider(p.id)}
                         disabled={verifyingId === p.id}
-                        className="text-xs font-semibold px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer disabled:opacity-50">
-                        {verifyingId === p.id ? 'Verifying...' : '✅ Approve & Verify'}
+                        className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <HiCheckCircle className="w-3.5 h-3.5" />
+                        <span>{verifyingId === p.id ? 'Verifying...' : 'Approve & Verify'}</span>
                       </button>
                     ) : (
-                      <span className="text-xs bg-emerald-50 text-emerald-600 font-semibold px-3 py-2 rounded-lg text-center">✅ Fully Verified</span>
+                      <span className="inline-flex items-center justify-center gap-1.5 text-xs bg-emerald-50 text-emerald-600 font-semibold px-3 py-2 rounded-lg">
+                        <HiCheckCircle className="w-3.5 h-3.5" />
+                        <span>Fully Verified</span>
+                      </span>
                     )}
 
-                    <button type="button" onClick={() => handleDeleteProvider(p.id)}
-                      className="text-xs font-semibold px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors cursor-pointer mt-2">
-                      🗑️ Delete Provider
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProvider(p.id)}
+                      className="inline-flex items-center justify-center gap-1.5 text-xs font-semibold px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors cursor-pointer mt-2"
+                    >
+                      <HiTrash className="w-3.5 h-3.5" />
+                      <span>Delete Provider</span>
                     </button>
                   </div>
                 </div>
@@ -478,25 +681,37 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* ===== FULL-SCREEN IMAGE LIGHTBOX ===== */}
       {lightboxSrc && (
         <div
           className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4"
           onClick={() => setLightboxSrc(null)}
         >
           <button
+            type="button"
             onClick={() => setLightboxSrc(null)}
-            className="absolute top-4 right-4 text-white text-3xl font-bold bg-black/50 hover:bg-black/80 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-colors z-10"
+            className="absolute top-4 right-4 text-white text-2xl font-bold bg-black/50 hover:bg-black/80 rounded-full w-10 h-10 flex items-center justify-center cursor-pointer transition-colors z-10"
+            aria-label="Close document preview"
           >
-            ×
+            &times;
           </button>
-          <img
-            src={lightboxSrc}
-            alt="Document Preview"
-            onClick={(e) => e.stopPropagation()}
-            className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl border border-white/20"
-          />
-          <p className="absolute bottom-4 text-white/60 text-xs">Press Esc or click outside to close</p>
+          {isPdfData(lightboxSrc) ? (
+            <iframe
+              src={lightboxSrc}
+              title="PDF Document Preview"
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-4xl h-[85vh] rounded-xl bg-white shadow-2xl border border-white/20"
+            />
+          ) : (
+            <img
+              src={lightboxSrc}
+              alt="Document Preview"
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-[90vh] rounded-xl object-contain shadow-2xl border border-white/20"
+            />
+          )}
+          <p className="absolute bottom-4 text-white/60 text-xs">
+            Press Esc or click outside to close
+          </p>
         </div>
       )}
 
@@ -506,11 +721,13 @@ export default function AdminDashboard() {
           {currentPath === '/admin/providers' && 'Providers Management'}
           {currentPath === '/admin/bookings' && 'Bookings Management'}
           {currentPath === '/admin/analytics' && 'Platform Analytics'}
-          {currentPath === '/admin/settings' && 'Admin Settings'}
+          {currentPath === '/admin/settings' && 'System & Platform Info'}
           {currentPath === '/admin' && 'Dashboard Overview'}
         </h1>
         <p className="text-text-secondary mt-1">
-          {loading ? 'Fetching records from MongoDB...' : 'Manage and track platform activities in real-time.'}
+          {loading
+            ? 'Fetching records from MongoDB...'
+            : 'Manage and track platform activities in real time.'}
         </p>
       </div>
 
@@ -538,65 +755,48 @@ export default function AdminDashboard() {
       {currentPath === '/admin/settings' && (
         <div className="space-y-6 max-w-4xl">
           <div className="bg-white rounded-2xl card-shadow border border-border/50 p-6">
-            <h3 className="text-lg font-bold text-text-primary mb-1">General Platform Settings</h3>
-            <p className="text-xs text-text-muted mb-5">Configure platform branding, support details, and service fee margins.</p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Platform Name</label>
-                <input
-                  type="text"
-                  defaultValue="SmartService"
-                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Support Email</label>
-                <input
-                  type="email"
-                  defaultValue="support@smartservice.com"
-                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Platform Commission Rate (%)</label>
-                <input
-                  type="number"
-                  defaultValue={10}
-                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-sm text-text-primary outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1.5">Default Currency</label>
-                <input
-                  type="text"
-                  defaultValue="INR (₹)"
-                  disabled
-                  className="w-full px-4 py-2.5 rounded-xl border border-border bg-gray-100 text-sm text-text-muted outline-none cursor-not-allowed"
-                />
-              </div>
-            </div>
+            <h3 className="text-lg font-bold text-text-primary mb-1">Platform Configuration</h3>
+            <p className="text-xs text-text-muted mb-5">
+              Active platform defaults and operational parameters.
+            </p>
 
-            <div className="mt-5 flex justify-end">
-              <button 
-                type="button" 
-                onClick={() => alert('Settings saved successfully!')} 
-                className="px-5 py-2.5 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-primary-dark transition-all cursor-pointer"
-              >
-                Save Changes
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-3.5 rounded-xl bg-surface">
+                <p className="text-xs text-text-muted">Platform Name</p>
+                <p className="text-sm font-semibold text-text-primary mt-0.5">SmartService</p>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surface">
+                <p className="text-xs text-text-muted">Default Currency</p>
+                <p className="text-sm font-semibold text-text-primary mt-0.5">INR (&#8377;)</p>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surface">
+                <p className="text-xs text-text-muted">Geospatial Search Limit</p>
+                <p className="text-sm font-semibold text-text-primary mt-0.5">
+                  25 km Default (3&ndash;50 km adjustable)
+                </p>
+              </div>
+              <div className="p-3.5 rounded-xl bg-surface">
+                <p className="text-xs text-text-muted">Ranking Model</p>
+                <p className="text-sm font-semibold text-text-primary mt-0.5">
+                  Bayesian Weighted Score (m = 5, C = 3.5)
+                </p>
+              </div>
             </div>
           </div>
 
           <div className="bg-white rounded-2xl card-shadow border border-border/50 p-6">
-            <h3 className="text-lg font-bold text-text-primary mb-1">System & Infrastructure</h3>
-            <p className="text-xs text-text-muted mb-4">Real-time status indicators for connected services and database servers.</p>
+            <h3 className="text-lg font-bold text-text-primary mb-1">System &amp; Infrastructure</h3>
+            <p className="text-xs text-text-muted mb-4">
+              Connected services and active security policies.
+            </p>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface">
                 <div>
                   <p className="text-sm font-semibold text-text-primary">Database Cluster</p>
-                  <p className="text-xs font-mono text-text-muted mt-0.5">MongoDB Atlas (Production Cloud)</p>
+                  <p className="text-xs font-mono text-text-muted mt-0.5">
+                    MongoDB Atlas (2dsphere Geospatial + 30-day Notification TTL)
+                  </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600">
                   Connected
@@ -605,8 +805,10 @@ export default function AdminDashboard() {
 
               <div className="flex items-center justify-between p-3.5 rounded-xl bg-surface">
                 <div>
-                  <p className="text-sm font-semibold text-text-primary">REST API Gateway</p>
-                  <p className="text-xs font-mono text-text-muted mt-0.5">https://household-service-provider.onrender.com/api</p>
+                  <p className="text-sm font-semibold text-text-primary">REST API &amp; Socket.IO</p>
+                  <p className="text-xs font-mono text-text-muted mt-0.5">
+                    HttpOnly JWT Cookies + XSS Input Sanitization
+                  </p>
                 </div>
                 <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-50 text-emerald-600">
                   Online

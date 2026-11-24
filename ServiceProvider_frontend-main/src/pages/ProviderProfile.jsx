@@ -15,18 +15,46 @@ export default function ProviderProfile() {
   const [authModal, setAuthModal] = useState(false);
   const [selectedService, setSelectedService] = useState(null);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [feedback, setFeedback] = useState(null);
 
-  // Review submission state
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   useEffect(() => {
-    const fetchProvider = async () => {
+    const fetchProviderAndReviews = async () => {
       try {
         const res = await API.get(`/providers/${id}`);
         if (res.data) {
-          setProvider(transformProvider(res.data));
+          const formatted = transformProvider(res.data);
+          const lookupIds = [formatted.id, formatted.userDocId].filter(Boolean);
+
+          let savedReviews = [];
+          for (const targetId of lookupIds) {
+            const revRes = await API.get(`/reviews/provider/${targetId}`).catch(() => ({ data: [] }));
+            if (Array.isArray(revRes.data) && revRes.data.length > 0) {
+              savedReviews = revRes.data;
+              break;
+            }
+          }
+
+          const mappedReviews = savedReviews.map((r) => ({
+            user: r.customerId?.name || 'Customer',
+            rating: Number(r.rating) || 5,
+            text: r.comment || '',
+            date: r.createdAt
+              ? new Date(r.createdAt).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                  year: 'numeric',
+                })
+              : 'Recent',
+          }));
+
+          setProvider({
+            ...formatted,
+            reviewsList: mappedReviews,
+          });
         }
       } catch (err) {
         console.error('Failed to load provider profile:', err);
@@ -36,22 +64,23 @@ export default function ProviderProfile() {
     };
 
     if (id) {
-      fetchProvider();
+      fetchProviderAndReviews();
     }
   }, [id]);
 
   const handleBookService = (svc) => {
-    const chosen = svc || (provider?.services && provider.services[0]) || {
-      name: provider?.category || 'General Service',
-      price: provider?.price || 299,
-      categoryId: provider?.categoryId,
-    };
+    const chosen = svc ||
+      (provider?.services && provider.services[0]) || {
+        name: provider?.category || 'General Service',
+        price: provider?.price || 299,
+        categoryId: provider?.categoryId,
+      };
 
     setSelectedService(chosen);
+    setFeedback(null);
 
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      alert('Please sign in or create an account to book a service.');
       setAuthModal(true);
       return;
     }
@@ -60,6 +89,7 @@ export default function ProviderProfile() {
 
   const handleBookingSubmit = async (formData) => {
     setBookingLoading(true);
+    setFeedback(null);
     try {
       const storedUser = localStorage.getItem('user');
       let customerId = null;
@@ -74,14 +104,19 @@ export default function ProviderProfile() {
       }
 
       if (!customerId) {
-        alert('Please sign in to confirm this booking.');
         setBookingModal(false);
         setAuthModal(true);
         return;
       }
 
+      const addressParts = [
+        formData.address?.trim(),
+        formData.city?.trim(),
+        formData.pincode?.trim() ? `- ${formData.pincode.trim()}` : '',
+      ].filter(Boolean);
+
       const payload = {
-        customerId: customerId,
+        customerId,
         providerId: provider.userDocId || provider.id,
         serviceCategory: selectedService?.categoryId || provider.categoryId,
         bookingDate: new Date(formData.date).toISOString(),
@@ -89,17 +124,23 @@ export default function ProviderProfile() {
           startTime: formData.time || '10:00 AM',
           endTime: formData.time || '11:00 AM',
         },
-        address: `${formData.address || ''}, ${formData.city || ''} - ${formData.pincode || ''}`.trim().replace(/^,\s*|-\s*$/g, ''),
+        address: addressParts.join(', ').replace(', -', ' -'),
         price: selectedService?.price || provider.price || 299,
         status: 'pending',
       };
 
       const response = await API.post('/bookings', payload);
-      alert(`Booking confirmed successfully! Booking ID: ${response.data._id || 'Created'}`);
       setBookingModal(false);
+      setFeedback({
+        type: 'success',
+        text: `Booking placed successfully (ID: ${response.data._id || 'Confirmed'}).`,
+      });
     } catch (err) {
       console.error('Booking Error:', err.response?.data || err.message);
-      alert(`Booking failed: ${err.response?.data?.message || err.response?.data?.error || err.message}`);
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.message || err.response?.data?.error || 'Failed to place booking.',
+      });
     } finally {
       setBookingLoading(false);
     }
@@ -107,35 +148,38 @@ export default function ProviderProfile() {
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
+    setFeedback(null);
+
     const storedUser = localStorage.getItem('user');
     if (!storedUser) {
-      alert('Please sign in to leave a review.');
       setAuthModal(true);
       return;
     }
 
     if (!reviewText.trim()) {
-      alert('Please enter a review message.');
+      setFeedback({ type: 'error', text: 'Please enter a review message before submitting.' });
       return;
     }
 
     let user;
     try {
       user = JSON.parse(storedUser);
-    } catch (err) {
-      alert('Invalid user session. Please sign in again.');
+    } catch {
+      setFeedback({ type: 'error', text: 'Invalid session. Please sign in again.' });
       return;
     }
 
     setReviewSubmitting(true);
 
     try {
-      // Find a recent completed booking or pass valid fallback reference
       let bookingId = null;
       try {
         const userBookingsRes = await API.get(`/bookings/user/${user._id}`);
         const validBooking = (userBookingsRes.data || []).find(
-          (b) => (b.providerId?._id === provider.userDocId || b.providerId === provider.userDocId)
+          (b) =>
+            b.providerId?._id === provider.userDocId ||
+            b.providerId === provider.userDocId ||
+            b.providerId === provider.id
         );
         if (validBooking) {
           bookingId = validBooking._id;
@@ -150,24 +194,21 @@ export default function ProviderProfile() {
         providerId: provider.userDocId || provider.id,
         rating: Number(reviewRating),
         comment: reviewText.trim(),
-        review: reviewText.trim(),
       };
 
-      // Also trigger rating update on provider document
-      await API.post('/reviews', payload).catch(async () => {
-        // Fallback directly to provider rating patch if standalone reviews endpoint rejects missing bookingId
-        await API.patch(`/providers/${provider.id}/rating`, { rating: Number(reviewRating) });
-      });
+      await API.post('/reviews', payload);
 
       const newReviewItem = {
-        user: user.name || 'You',
+        user: user.name || 'Customer',
         rating: Number(reviewRating),
         text: reviewText.trim(),
         date: 'Just now',
       };
 
       const newTotal = (provider.reviews || 0) + 1;
-      const newAvg = Number(((((provider.rating || 4.5) * (provider.reviews || 0)) + Number(reviewRating)) / newTotal).toFixed(1));
+      const newAvg = Number(
+        (((provider.rating || 4.5) * (provider.reviews || 0) + Number(reviewRating)) / newTotal).toFixed(1)
+      );
 
       setProvider((prev) => ({
         ...prev,
@@ -178,10 +219,13 @@ export default function ProviderProfile() {
 
       setReviewText('');
       setReviewRating(5);
-      alert('Thank you! Your review has been submitted.');
+      setFeedback({ type: 'success', text: 'Your review has been saved.' });
     } catch (err) {
       console.error('Review error:', err);
-      alert(err.response?.data?.error || err.response?.data?.message || 'Failed to submit review.');
+      setFeedback({
+        type: 'error',
+        text: err.response?.data?.error || err.response?.data?.message || 'Failed to submit review.',
+      });
     } finally {
       setReviewSubmitting(false);
     }
@@ -192,7 +236,7 @@ export default function ProviderProfile() {
   if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <p className="text-text-secondary text-lg">Loading provider profile from database...</p>
+        <p className="text-text-secondary text-base">Loading provider profile...</p>
       </div>
     );
   }
@@ -200,7 +244,6 @@ export default function ProviderProfile() {
   if (!provider) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <p className="text-5xl mb-4">😕</p>
         <h2 className="text-xl font-bold text-text-primary">Provider not found</h2>
         <Link to="/services" className="mt-4 inline-block text-primary hover:underline">
           Browse all services
@@ -209,11 +252,21 @@ export default function ProviderProfile() {
     );
   }
 
-  const safeServices = Array.isArray(provider.services) && provider.services.length > 0
-    ? provider.services
-    : [{ name: provider.category || 'General Service', price: provider.price || 299, categoryId: provider.categoryId }];
+  const safeServices =
+    Array.isArray(provider.services) && provider.services.length > 0
+      ? provider.services
+      : [
+          {
+            name: provider.category || 'General Service',
+            price: provider.price || 299,
+            categoryId: provider.categoryId,
+          },
+        ];
 
-  const minPrice = safeServices.reduce((min, s) => Math.min(min, s.price || 299), safeServices[0]?.price || 299);
+  const minPrice = safeServices.reduce(
+    (min, s) => Math.min(min, s.price || 299),
+    safeServices[0]?.price || 299
+  );
 
   const isDayAvailable = (day) => {
     if (!Array.isArray(provider.availability)) return true;
@@ -226,17 +279,28 @@ export default function ProviderProfile() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-text-muted mb-6">
-        <Link to="/services" className="hover:text-primary transition-colors">Services</Link>
+        <Link to="/services" className="hover:text-primary transition-colors">
+          Services
+        </Link>
         <span>/</span>
         <span className="text-text-secondary">{provider.name}</span>
       </nav>
 
+      {feedback && (
+        <div
+          className={`mb-6 p-3.5 rounded-xl text-xs font-medium border ${
+            feedback.type === 'error'
+              ? 'bg-red-50 text-red-600 border-red-200'
+              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          }`}
+        >
+          {feedback.text}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Profile Header */}
           <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
             <div className="flex flex-col sm:flex-row gap-5">
               <div className="relative shrink-0">
@@ -256,12 +320,12 @@ export default function ProviderProfile() {
                     <p className="text-text-secondary mt-0.5">{provider.category}</p>
                   </div>
                   {provider.recommended && (
-                    <span className="shrink-0 inline-flex items-center gap-1 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                      ⭐ Recommended
+                    <span className="shrink-0 inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-3 py-1 rounded-full">
+                      Recommended
                     </span>
                   )}
                 </div>
-                <div className="mt-3">
+                <div className="mt-3 flex items-center">
                   <RatingStars rating={provider.rating} size="md" />
                   <span className="text-sm text-text-muted ml-2">({provider.reviews} reviews)</span>
                 </div>
@@ -280,9 +344,8 @@ export default function ProviderProfile() {
             <p className="mt-5 text-sm text-text-secondary leading-relaxed">{provider.about}</p>
           </div>
 
-          {/* Services */}
           <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
-            <h2 className="text-lg font-bold text-text-primary mb-4">Services & Pricing</h2>
+            <h2 className="text-lg font-bold text-text-primary mb-4">Services &amp; Pricing</h2>
             <div className="space-y-3">
               {safeServices.map((svc, idx) => (
                 <div
@@ -294,7 +357,7 @@ export default function ProviderProfile() {
                     <p className="text-sm text-text-muted">Starting from</p>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-lg font-bold text-primary">₹{svc.price}</span>
+                    <span className="text-lg font-bold text-primary">&#8377;{svc.price}</span>
                     <button
                       type="button"
                       onClick={() => handleBookService(svc)}
@@ -308,14 +371,17 @@ export default function ProviderProfile() {
             </div>
           </div>
 
-          {/* Reviews Section */}
           <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50">
             <h2 className="text-lg font-bold text-text-primary mb-4">Customer Reviews</h2>
 
-            {/* Leave a Review Form */}
-            <form onSubmit={handleReviewSubmit} className="mb-6 p-4 rounded-xl bg-surface border border-border/70">
-              <h3 className="text-sm font-semibold text-text-primary mb-2">Leave a Rating & Review</h3>
-              
+            <form
+              onSubmit={handleReviewSubmit}
+              className="mb-6 p-4 rounded-xl bg-surface border border-border/70"
+            >
+              <h3 className="text-sm font-semibold text-text-primary mb-2">
+                Leave a Rating &amp; Review
+              </h3>
+
               <div className="flex items-center gap-2 mb-3">
                 <span className="text-xs text-text-secondary">Your Rating:</span>
                 <div className="flex items-center gap-1">
@@ -334,7 +400,9 @@ export default function ProviderProfile() {
                     </button>
                   ))}
                 </div>
-                <span className="text-xs font-bold text-text-primary ml-1">{reviewRating} / 5</span>
+                <span className="text-xs font-bold text-text-primary ml-1">
+                  {reviewRating} / 5
+                </span>
               </div>
 
               <textarea
@@ -356,7 +424,6 @@ export default function ProviderProfile() {
               </div>
             </form>
 
-            {/* Reviews List */}
             {Array.isArray(provider.reviewsList) && provider.reviewsList.length > 0 ? (
               <div className="space-y-4">
                 {provider.reviewsList.map((review, i) => (
@@ -383,12 +450,13 @@ export default function ProviderProfile() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-text-muted">No reviews yet for this provider. Be the first to leave one!</p>
+              <p className="text-sm text-text-muted">
+                No reviews yet for this provider. Be the first to leave one.
+              </p>
             )}
           </div>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
           <div className="bg-white rounded-2xl card-shadow p-6 border border-border/50 sticky top-20">
             <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2">
@@ -419,13 +487,12 @@ export default function ProviderProfile() {
             </button>
 
             <p className="mt-3 text-xs text-text-muted text-center">
-              Starting from ₹{minPrice}
+              Starting from &#8377;{minPrice}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Booking Modal */}
       <Modal
         isOpen={bookingModal}
         onClose={() => setBookingModal(false)}
@@ -437,11 +504,13 @@ export default function ProviderProfile() {
               <p className="font-medium text-text-primary">{provider.name}</p>
               <p className="text-sm text-text-secondary">{selectedService?.name}</p>
             </div>
-            <span className="text-lg font-bold text-primary">₹{selectedService?.price}</span>
+            <span className="text-lg font-bold text-primary">&#8377;{selectedService?.price}</span>
           </div>
         </div>
         {bookingLoading ? (
-          <div className="py-8 text-center text-primary font-medium">Processing booking with database...</div>
+          <div className="py-8 text-center text-primary font-medium">
+            Processing booking with database...
+          </div>
         ) : (
           <BookingForm
             provider={provider}
@@ -451,7 +520,6 @@ export default function ProviderProfile() {
         )}
       </Modal>
 
-      {/* Login Modal prompt if guest clicks Book */}
       <AuthModal
         isOpen={authModal}
         onClose={() => setAuthModal(false)}

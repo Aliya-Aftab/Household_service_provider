@@ -5,12 +5,11 @@ import FilterSidebar from '../components/FilterSidebar';
 import SearchBar from '../components/SearchBar';
 import API, { transformProvider } from '../utils/api';
 import { calculateDistanceKm } from '../utils/distance';
-import { HiAdjustments, HiLocationMarker } from 'react-icons/hi';
+import { HiAdjustments, HiLocationMarker, HiCheckCircle } from 'react-icons/hi';
 
 export default function Services() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Read initial values from URL query parameters
   const initialCategory = searchParams.get('category') || 'All';
   const initialService = searchParams.get('search') || searchParams.get('service') || '';
   const initialLoc = searchParams.get('location') || '';
@@ -31,7 +30,7 @@ export default function Services() {
     coords: initialCoords,
   });
 
-  const [maxDistanceKm, setMaxDistanceKm] = useState(initialMaxKm); // Distance limit in km
+  const [maxDistanceKm, setMaxDistanceKm] = useState(initialMaxKm);
   const [isLocatingPrompt, setIsLocatingPrompt] = useState(false);
 
   const [filters, setFilters] = useState({
@@ -43,7 +42,6 @@ export default function Services() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState('recommended');
 
-  // Synchronize state whenever URL search params change
   useEffect(() => {
     const cat = searchParams.get('category') || 'All';
     const term = searchParams.get('search') || searchParams.get('service') || '';
@@ -65,7 +63,6 @@ export default function Services() {
     }
   }, [searchParams]);
 
-  // Fetch providers from MongoDB
   const fetchProviders = async (coords = null, maxKm = 25, serviceText = '') => {
     setLoading(true);
     try {
@@ -79,10 +76,13 @@ export default function Services() {
       const list = Array.isArray(res.data) ? res.data : [];
       let formatted = list.map(transformProvider);
 
-      // Ensure every provider has distanceKm calculated if user coordinates exist
       if (coords && coords.lat && coords.lng) {
         formatted = formatted.map((p) => {
-          if ((p.distanceKm === null || p.distanceKm === undefined) && p.coordinates && p.coordinates.length === 2) {
+          if (
+            (p.distanceKm === null || p.distanceKm === undefined) &&
+            p.coordinates &&
+            p.coordinates.length === 2
+          ) {
             const calculatedDist = calculateDistanceKm(
               coords.lat,
               coords.lng,
@@ -155,7 +155,6 @@ export default function Services() {
     setSearchParams({});
   };
 
-  // User triggers browser geolocation directly from the Services page
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
@@ -209,7 +208,6 @@ export default function Services() {
   const filtered = useMemo(() => {
     let result = [...rawProviders];
 
-    // Distance filtering based on maxDistanceKm limit when coords are present
     if (searchQuery.coords && maxDistanceKm) {
       result = result.filter((p) => {
         if (p.distanceKm !== null && p.distanceKm !== undefined) {
@@ -219,7 +217,6 @@ export default function Services() {
       });
     }
 
-    // Support FilterSidebar distance option if explicitly clicked
     if (filters.distance && filters.distance !== 'Any') {
       const maxFilterKm = parseFloat(filters.distance.replace(/[^\d.]/g, ''));
       if (!isNaN(maxFilterKm)) {
@@ -232,7 +229,6 @@ export default function Services() {
       }
     }
 
-    // Search input keyword filtering (Service / Name / Category / Skills)
     if (searchQuery.service.trim()) {
       const q = searchQuery.service.toLowerCase().trim();
       result = result.filter((p) => {
@@ -249,7 +245,6 @@ export default function Services() {
       });
     }
 
-    // Smart tokenized location filtering (only if not using GPS coordinates)
     if (
       searchQuery.location.trim() &&
       !searchQuery.coords &&
@@ -269,19 +264,16 @@ export default function Services() {
       }
     }
 
-    // Category sidebar filter
     if (filters.category && filters.category !== 'All') {
       result = result.filter(
         (p) => (p.category || '').toLowerCase() === filters.category.toLowerCase()
       );
     }
 
-    // Rating filter
     if (filters.minRating) {
       result = result.filter((p) => (p.rating || 0) >= filters.minRating);
     }
 
-    // Price range filter
     if (filters.priceRange) {
       const ranges = {
         'Under ₹300': [0, 300],
@@ -293,7 +285,6 @@ export default function Services() {
       result = result.filter((p) => (p.price || 0) >= min && (p.price || 0) <= max);
     }
 
-    // Sort order
     switch (sortBy) {
       case 'distance-low':
         result.sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
@@ -321,17 +312,17 @@ export default function Services() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold text-text-primary">
           {filters.category !== 'All' ? `${filters.category} Services` : 'All Services'}
         </h1>
         <p className="text-text-secondary mt-1">
-          {loading ? 'Finding service providers...' : `${filtered.length} verified providers available`}
+          {loading
+            ? 'Finding service providers...'
+            : `${filtered.length} verified providers available`}
         </p>
       </div>
 
-      {/* Search Bar with synced initial values */}
       <SearchBar
         onSearch={handleSearch}
         initialValues={{
@@ -342,12 +333,11 @@ export default function Services() {
         className="mb-6"
       />
 
-      {/* Distance Limit & GPS Bar */}
       {searchQuery.coords ? (
         <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/80 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-lg shadow-sm shrink-0">
-              📍
+            <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm shrink-0">
+              <HiLocationMarker className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -355,7 +345,7 @@ export default function Services() {
                   {searchQuery.location || 'Current GPS Location'}
                 </span>
                 <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                  ✓ GPS Active
+                  <HiCheckCircle className="w-3.5 h-3.5" /> GPS Active
                 </span>
               </div>
               <p className="text-xs text-text-secondary mt-0.5">
@@ -364,7 +354,6 @@ export default function Services() {
             </div>
           </div>
 
-          {/* Quick Distance Radius Pills */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-semibold text-text-secondary mr-1">Distance Limit:</span>
             {[3, 5, 10, 15, 25, 50].map((km) => (
@@ -378,7 +367,7 @@ export default function Services() {
                     : 'bg-white text-text-secondary hover:bg-gray-100 border border-border'
                 }`}
               >
-                ≤ {km} km
+                &le; {km} km
               </button>
             ))}
           </div>
@@ -386,10 +375,14 @@ export default function Services() {
       ) : (
         <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2.5 text-sm text-amber-900">
-            <span className="text-xl">🎯</span>
+            <HiLocationMarker className="w-5 h-5 text-amber-600 shrink-0" />
             <div>
-              <p className="font-semibold text-xs sm:text-sm">Find professionals closest to your doorstep</p>
-              <p className="text-xs text-amber-700">Enable current location to see exact km distance and nearest providers</p>
+              <p className="font-semibold text-xs sm:text-sm">
+                Find professionals closest to your doorstep
+              </p>
+              <p className="text-xs text-amber-700">
+                Enable current location to see exact km distance and nearest providers
+              </p>
             </div>
           </div>
           <button
@@ -404,7 +397,6 @@ export default function Services() {
         </div>
       )}
 
-      {/* Active Search Chips */}
       {(searchQuery.service || searchQuery.location) && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <span className="text-xs text-text-muted">Filtering by:</span>
@@ -415,7 +407,8 @@ export default function Services() {
           )}
           {searchQuery.location && (
             <span className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary font-medium">
-              📍 {searchQuery.location}
+              <HiLocationMarker className="w-3.5 h-3.5" />
+              {searchQuery.location}
             </span>
           )}
           {searchQuery.coords && (
@@ -433,7 +426,6 @@ export default function Services() {
         </div>
       )}
 
-      {/* Mobile Filter Button + Sort */}
       <div className="flex items-center gap-3 mb-6">
         <button
           type="button"
@@ -451,14 +443,13 @@ export default function Services() {
           aria-label="Sort by"
         >
           <option value="recommended">Recommended</option>
-          <option value="distance-low">📍 Distance: Nearest First</option>
+          <option value="distance-low">Distance: Nearest First</option>
           <option value="rating">Highest Rated</option>
           <option value="price-low">Price: Low to High</option>
           <option value="price-high">Price: High to Low</option>
         </select>
       </div>
 
-      {/* Layout */}
       <div className="flex gap-8">
         <FilterSidebar
           filters={filters}
@@ -481,7 +472,9 @@ export default function Services() {
             </div>
           ) : (
             <div className="bg-white rounded-2xl card-shadow p-12 text-center border border-border/50">
-              <p className="text-5xl mb-4">📍</p>
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4">
+                <HiLocationMarker className="w-6 h-6" />
+              </div>
               <p className="text-lg font-semibold text-text-primary">
                 {searchQuery.coords
                   ? `No ${searchQuery.service || ''} providers found within ${maxDistanceKm} km`

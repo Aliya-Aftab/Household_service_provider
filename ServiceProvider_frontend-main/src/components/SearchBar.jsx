@@ -7,14 +7,18 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
   const [coords, setCoords] = useState(initialValues?.coords || null);
   const [isLocating, setIsLocating] = useState(false);
 
-  // Sync state if initialValues changes from parent (e.g. URL query params)
   useEffect(() => {
     if (initialValues) {
       if (initialValues.service !== undefined) setService(initialValues.service || '');
       if (initialValues.location !== undefined) setLocation(initialValues.location || '');
       if (initialValues.coords !== undefined) setCoords(initialValues.coords || null);
     }
-  }, [initialValues?.service, initialValues?.location, initialValues?.coords?.lat, initialValues?.coords?.lng]);
+  }, [
+    initialValues?.service,
+    initialValues?.location,
+    initialValues?.coords?.lat,
+    initialValues?.coords?.lng,
+  ]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -41,7 +45,6 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
         let locName = 'Current Location';
 
         try {
-          // Reverse geocode to get a readable address name
           const res = await fetch(
             `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
           );
@@ -68,10 +71,7 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
         setLocation(locName);
         setIsLocating(false);
 
-        // Trigger immediate search with new coords if service is already typed
-        if (service.trim()) {
-          onSearch?.({ service: service.trim(), location: locName, coords: newCoords });
-        }
+        onSearch?.({ service: service.trim(), location: locName, coords: newCoords });
       },
       (error) => {
         console.error('Error getting location:', error);
@@ -99,14 +99,15 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
         />
       </div>
       <div className="flex items-center gap-2 flex-1 px-3 py-2 rounded-xl bg-surface relative">
-        <HiLocationMarker className={`w-5 h-5 shrink-0 ${coords ? 'text-primary' : 'text-text-muted'}`} />
+        <HiLocationMarker
+          className={`w-5 h-5 shrink-0 ${coords ? 'text-primary' : 'text-text-muted'}`}
+        />
         <input
           type="text"
           placeholder="Your location / city"
           value={location}
           onChange={(e) => {
             setLocation(e.target.value);
-            // Clear GPS coordinates if user types a custom text query
             if (coords) setCoords(null);
           }}
           className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
@@ -121,10 +122,11 @@ export default function SearchBar({ onSearch, initialValues, className = '' }) {
           type="button"
           onClick={handleGetLocation}
           disabled={isLocating}
-          className="px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors cursor-pointer shrink-0 disabled:opacity-50"
           title="Auto-detect current GPS location"
         >
-          {isLocating ? 'Locating...' : '🎯 Locate Me'}
+          <HiLocationMarker className="w-3.5 h-3.5" />
+          <span>{isLocating ? 'Locating...' : 'Locate Me'}</span>
         </button>
       </div>
       <button

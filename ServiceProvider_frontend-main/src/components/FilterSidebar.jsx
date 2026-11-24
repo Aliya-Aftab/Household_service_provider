@@ -14,12 +14,10 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
           const mapped = res.data.map((c, i) => ({
             id: c._id || i,
             name: c.name,
-            icon: c.icon || '🛠️',
           }));
           setCategoryList(mapped);
         }
-      } catch (err) {
-        // Fall back to default static categories on network lag
+      } catch {
         setCategoryList(defaultCategories);
       }
     };
@@ -55,12 +53,16 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
         <div className="p-5 lg:p-0">
           <div className="flex items-center justify-between mb-6 lg:hidden">
             <h3 className="text-lg font-bold text-text-primary">Filters</h3>
-            <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg" aria-label="Close filters">
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 hover:bg-gray-100 rounded-lg"
+              aria-label="Close filters"
+            >
               <HiX className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Category Filter */}
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-text-primary mb-3">Category</h4>
             <div className="space-y-1.5">
@@ -75,25 +77,31 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
               >
                 All Categories
               </button>
-              {categoryList.map((cat) => (
-                <button
-                  type="button"
-                  key={cat.id || cat.name}
-                  onClick={() => onFilterChange({ ...filters, category: cat.name })}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors cursor-pointer ${
-                    filters.category?.toLowerCase() === cat.name?.toLowerCase()
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-text-secondary hover:bg-gray-50'
-                  }`}
-                >
-                  <span>{cat.icon || '🔧'}</span>
-                  <span>{cat.name}</span>
-                </button>
-              ))}
+              {categoryList.map((cat) => {
+                const isSelected = filters.category?.toLowerCase() === cat.name?.toLowerCase();
+                return (
+                  <button
+                    type="button"
+                    key={cat.id || cat.name}
+                    onClick={() => onFilterChange({ ...filters, category: cat.name })}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2.5 transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-text-secondary hover:bg-gray-50'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        isSelected ? 'bg-primary' : 'bg-gray-300'
+                      }`}
+                    />
+                    <span>{cat.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Price Filter */}
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-text-primary mb-3">Price Range</h4>
             <div className="space-y-1.5">
@@ -119,7 +127,6 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             </div>
           </div>
 
-          {/* Rating Filter */}
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-text-primary mb-3">Rating</h4>
             <div className="space-y-1.5">
@@ -140,13 +147,12 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
                   }`}
                 >
                   <HiStar className="w-4 h-4 text-amber-400" />
-                  <span>{r}+ & above</span>
+                  <span>{r}+ &amp; above</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Distance Filter */}
           <div className="mb-6">
             <h4 className="text-sm font-semibold text-text-primary mb-3">Distance</h4>
             <div className="space-y-1.5">
@@ -172,7 +178,6 @@ export default function FilterSidebar({ filters, onFilterChange, isOpen, onClose
             </div>
           </div>
 
-          {/* Clear Filters */}
           <button
             type="button"
             onClick={() =>

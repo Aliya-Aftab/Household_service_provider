@@ -2,26 +2,16 @@ import axios from "axios";
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "https://household-service-provider.onrender.com/api",
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Attach JWT token to requests
-API.interceptors.request.use((req) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    req.headers.Authorization = `Bearer ${token}`;
-  }
-  return req;
-});
-
-// Intercept 401 Unauthorized to clean stale sessions
 API.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response && err.response.status === 401) {
-      localStorage.removeItem("token");
       localStorage.removeItem("user");
     }
     return Promise.reject(err);
@@ -80,8 +70,11 @@ export const transformProvider = (p) => {
     price: catObj?.basePrice || 299,
     experience: `${p.experienceYears || 5} years`,
     image:
-      p.profilePicture ||
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
+      p.profilePicture &&
+      p.profilePicture !== "default_pic_url" &&
+      (p.profilePicture.startsWith("http") || p.profilePicture.startsWith("data:"))
+        ? p.profilePicture
+        : "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop&crop=face",
     aadhaarImage: p.aadhaarImage,
     certificates: p.certificates || [],
     location: resolvedCity,
@@ -114,7 +107,6 @@ export const transformProvider = (p) => {
   };
 };
 
-// Adapter: Maps backend Mongoose Booking document to props expected by Dashboard UI
 export const transformBooking = (b) => {
   if (!b) return null;
 
@@ -127,6 +119,7 @@ export const transformBooking = (b) => {
 
   return {
     id: b._id,
+    customerName: b.customerId?.name || "Customer",
     providerId: b.providerId?._id || b.providerId,
     providerName: b.providerId?.name || "Professional",
     category: b.serviceCategory?.name || b.serviceCategory?.categoryName || "Service",
